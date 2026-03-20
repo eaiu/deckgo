@@ -10,6 +10,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -38,6 +41,7 @@ public class ResearchAgentService extends AbstractWorkflowAgentService {
 
     private final WorkflowContentService workflowContentService;
     private final TavilySearchService tavilySearchService;
+    private final ExecutorService ioPool = Executors.newCachedThreadPool();
 
     public ResearchAgentService(
         WorkflowAgentClientFactory workflowAgentClientFactory,
@@ -92,46 +96,50 @@ public class ResearchAgentService extends AbstractWorkflowAgentService {
     }
 
     private JsonNode enrichWithSearch(List<PageResearchPlanItem> pages) {
+        List<CompletableFuture<ObjectNode>> futures = pages.stream()
+            .map(page -> CompletableFuture.supplyAsync(() -> enrichSinglePage(page), ioPool))
+            .toList();
+
         ArrayNode enriched = objectMapper.createArrayNode();
+        futures.forEach(future -> enriched.add(future.join()));
+        return enriched;
+    }
 
-        for (PageResearchPlanItem page : pages) {
-            ObjectNode item = objectMapper.createObjectNode();
-            item.put("pageId", page.pageId());
-            item.put("title", page.title());
-            item.put("needsSearch", page.needsSearch());
-            item.put("searchIntent", page.searchIntent());
-            item.put("searchDepth", page.searchDepth() == null || page.searchDepth().isBlank() ? "basic" : page.searchDepth());
+    private ObjectNode enrichSinglePage(PageResearchPlanItem page) {
+        ObjectNode item = objectMapper.createObjectNode();
+        item.put("pageId", page.pageId());
+        item.put("title", page.title());
+        item.put("needsSearch", page.needsSearch());
+        item.put("searchIntent", page.searchIntent());
+        item.put("searchDepth", page.searchDepth() == null || page.searchDepth().isBlank() ? "basic" : page.searchDepth());
 
-            ArrayNode queries = item.putArray("queries");
-            List<String> searchQueries = page.queries() == null ? List.of() : page.queries().stream().filter(query -> query != null && !query.isBlank()).limit(3).toList();
-            searchQueries.forEach(queries::add);
+        ArrayNode queries = item.putArray("queries");
+        List<String> searchQueries = page.queries() == null ? List.of() : page.queries().stream().filter(query -> query != null && !query.isBlank()).limit(3).toList();
+        searchQueries.forEach(queries::add);
 
-            ArrayNode sources = item.putArray("sources");
-            StringBuilder findings = new StringBuilder();
+        ArrayNode sources = item.putArray("sources");
+        StringBuilder findings = new StringBuilder();
 
-            if (page.needsSearch() && !searchQueries.isEmpty()) {
-                for (String query : searchQueries) {
-                    Optional<JsonNode> searchResult = tavilySearchService.collectPageResearch(query, item.path("searchDepth").asText());
-                    if (searchResult.isPresent()) {
-                        JsonNode result = searchResult.get();
-                        if (!result.path("answer").asText("").isBlank()) {
-                            if (!findings.isEmpty()) {
-                                findings.append(" ");
-                            }
-                            findings.append(result.path("answer").asText(""));
+        if (page.needsSearch() && !searchQueries.isEmpty()) {
+            for (String query : searchQueries) {
+                Optional<JsonNode> searchResult = tavilySearchService.collectPageResearch(query, item.path("searchDepth").asText());
+                if (searchResult.isPresent()) {
+                    JsonNode result = searchResult.get();
+                    if (!result.path("answer").asText("").isBlank()) {
+                        if (!findings.isEmpty()) {
+                            findings.append(" ");
                         }
-                        for (JsonNode source : result.path("sources")) {
-                            sources.add(source);
-                        }
+                        findings.append(result.path("answer").asText(""));
+                    }
+                    for (JsonNode source : result.path("sources")) {
+                        sources.add(source);
                     }
                 }
             }
-
-            item.put("findings", findings.toString().isBlank() ? "当前页暂无外部搜索摘要，后续以原始 sources 为主要参考。" : findings.toString());
-            enriched.add(item);
         }
 
-        return enriched;
+        item.put("findings", findings.toString().isBlank() ? "当前页暂无外部搜索摘要，后续以原始 sources 为主要参考。" : findings.toString());
+        return item;
     }
 
     private record PageResearchPlanDocument(List<PageResearchPlanItem> pages) {

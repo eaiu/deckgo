@@ -60,21 +60,21 @@
 
           <div class="home-composer-footer">
             <div class="home-composer-tools">
-              <button class="home-utility-button" type="button" aria-disabled="true">
+              <!-- <button class="home-utility-button" type="button" aria-disabled="true">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M9.5 13.5L15 8C16.657 6.343 19.343 6.343 21 8C22.657 9.657 22.657 12.343 21 14L12 23C9.239 25.761 4.761 25.761 2 23C-0.761 20.239 -0.761 15.761 2 13L11.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <span>上传文件</span>
                 <small>即将支持</small>
-              </button>
+              </button> -->
 
-              <button class="home-utility-button home-utility-button-muted" type="button" aria-disabled="true">
+              <!-- <button class="home-utility-button home-utility-button-muted" type="button" aria-disabled="true">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
                   <path d="M12 8.5L15.5 10.5V14.5L12 16.5L8.5 14.5V10.5L12 8.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
                 </svg>
                 <span>主题</span>
-              </button>
+              </button> -->
 
               <p v-if="error" class="form-error home-form-error">{{ error }}</p>
             </div>
@@ -167,8 +167,8 @@ const router = useRouter();
 
 const contentModes = [
   { label: "演示文稿", active: true, note: "" },
-  { label: "社媒图文", active: false, note: "即将支持" },
-  { label: "长图", active: false, note: "即将支持" }
+  // { label: "社媒图文", active: false, note: "即将支持" },
+  // { label: "长图", active: false, note: "即将支持" }
 ] as const;
 
 const quickStartPrompts = [

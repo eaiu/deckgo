@@ -36,6 +36,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -243,14 +244,25 @@ public class WorkflowSessionService {
         );
 
         int index = 1;
-        for (JsonNode pagePlan : pagePlans) {
+        List<CompletableFuture<String>> draftFutures = pagePlans.stream()
+            .map(plan -> CompletableFuture.supplyAsync(() ->
+                svgDesignAgentService.generateDraftSvg(
+                    plan,
+                    findPageResearch(plan.path("pageId").asText(""), session.getPageResearchJson()),
+                    session.getSelectedTemplateId()
+                )
+            ))
+            .toList();
+
+        for (int i = 0; i < pagePlans.size(); i++) {
+            JsonNode pagePlan = pagePlans.get(i);
             WorkflowPageEntity page = new WorkflowPageEntity();
             page.setId(UUID.randomUUID());
             page.setWorkflowVersionId(planningVersion.getId());
             page.setOrderIndex(index);
             page.setTitle(pagePlan.path("title").asText("未命名页面"));
             page.setPagePlanJson(pagePlan);
-            page.setDraftSvg(workflowContentService.renderDraftSvg(pagePlan, session.getSelectedTemplateId()));
+            page.setDraftSvg(draftFutures.get(i).join());
             workflowPageRepository.save(page);
             index++;
         }
@@ -283,7 +295,18 @@ public class WorkflowSessionService {
             "生成最终 SVG 设计稿"
         );
 
-        for (WorkflowPageEntity planningPage : planningPages) {
+        List<CompletableFuture<String>> finalFutures = planningPages.stream()
+            .map(planningPage -> CompletableFuture.supplyAsync(() ->
+                svgDesignAgentService.generateFinalSvg(
+                    planningPage.getPagePlanJson(),
+                    findPageResearch(planningPage.getPagePlanJson().path("pageId").asText(""), session.getPageResearchJson()),
+                    session.getSelectedTemplateId()
+                )
+            ))
+            .toList();
+
+        for (int i = 0; i < planningPages.size(); i++) {
+            WorkflowPageEntity planningPage = planningPages.get(i);
             WorkflowPageEntity page = new WorkflowPageEntity();
             page.setId(UUID.randomUUID());
             page.setWorkflowVersionId(designVersion.getId());
@@ -291,11 +314,7 @@ public class WorkflowSessionService {
             page.setTitle(planningPage.getTitle());
             page.setPagePlanJson(planningPage.getPagePlanJson());
             page.setDraftSvg(planningPage.getDraftSvg());
-            page.setFinalSvg(svgDesignAgentService.generateFinalSvg(
-                planningPage.getPagePlanJson(),
-                findPageResearch(planningPage.getPagePlanJson().path("pageId").asText(""), session.getPageResearchJson()),
-                session.getSelectedTemplateId()
-            ));
+            page.setFinalSvg(finalFutures.get(i).join());
             workflowPageRepository.save(page);
         }
 

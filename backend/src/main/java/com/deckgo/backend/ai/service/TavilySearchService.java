@@ -5,8 +5,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.time.Duration;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -14,13 +18,24 @@ import org.springframework.web.client.RestClient;
 public class TavilySearchService {
 
     private static final int FIXED_MAX_RESULTS = 20;
+    private static final Logger log = LoggerFactory.getLogger(TavilySearchService.class);
 
     private final DeckGoProperties properties;
     private final ObjectMapper objectMapper;
+    private final RestClient restClient;
 
     public TavilySearchService(DeckGoProperties properties, ObjectMapper objectMapper) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(10));
+        factory.setReadTimeout(Duration.ofSeconds(30));
+
+        this.restClient = RestClient.builder()
+            .baseUrl(properties.getAi().getTavily().getBaseUrl())
+            .requestFactory(factory)
+            .build();
     }
 
     public Optional<JsonNode> collectBackgroundSummary(String topic) {
@@ -50,19 +65,20 @@ public class TavilySearchService {
         body.put("include_images", false);
         body.put("auto_parameters", false);
 
-        RestClient restClient = RestClient.builder()
-            .baseUrl(tavily.getBaseUrl())
-            .build();
+        try {
+            JsonNode response = restClient.post()
+                .uri("/search")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + tavily.getApiKey())
+                .body(body)
+                .retrieve()
+                .body(JsonNode.class);
 
-        JsonNode response = restClient.post()
-            .uri("/search")
-            .contentType(MediaType.APPLICATION_JSON)
-            .header("Authorization", "Bearer " + tavily.getApiKey())
-            .body(body)
-            .retrieve()
-            .body(JsonNode.class);
-
-        return Optional.ofNullable(response);
+            return Optional.ofNullable(response);
+        } catch (Exception e) {
+            log.warn("Tavily search failed for query [{}]: {}", query, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     private JsonNode normalize(String kind, String query, JsonNode response) {
