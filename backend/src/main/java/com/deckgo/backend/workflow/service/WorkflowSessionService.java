@@ -1,5 +1,10 @@
 package com.deckgo.backend.workflow.service;
 
+import com.deckgo.backend.ai.service.DiscoveryAgentService;
+import com.deckgo.backend.ai.service.OutlineAgentService;
+import com.deckgo.backend.ai.service.PagePlanAgentService;
+import com.deckgo.backend.ai.service.ResearchAgentService;
+import com.deckgo.backend.ai.service.SvgDesignAgentService;
 import com.deckgo.backend.common.exception.NotFoundException;
 import com.deckgo.backend.common.exception.ValidationException;
 import com.deckgo.backend.project.entity.ProjectEntity;
@@ -40,6 +45,11 @@ public class WorkflowSessionService {
     private final WorkflowVersionRepository workflowVersionRepository;
     private final WorkflowPageRepository workflowPageRepository;
     private final WorkflowContentService workflowContentService;
+    private final DiscoveryAgentService discoveryAgentService;
+    private final ResearchAgentService researchAgentService;
+    private final OutlineAgentService outlineAgentService;
+    private final PagePlanAgentService pagePlanAgentService;
+    private final SvgDesignAgentService svgDesignAgentService;
     private final ProjectService projectService;
     private final ObjectMapper objectMapper;
 
@@ -49,6 +59,11 @@ public class WorkflowSessionService {
         WorkflowVersionRepository workflowVersionRepository,
         WorkflowPageRepository workflowPageRepository,
         WorkflowContentService workflowContentService,
+        DiscoveryAgentService discoveryAgentService,
+        ResearchAgentService researchAgentService,
+        OutlineAgentService outlineAgentService,
+        PagePlanAgentService pagePlanAgentService,
+        SvgDesignAgentService svgDesignAgentService,
         ProjectService projectService,
         ObjectMapper objectMapper
     ) {
@@ -57,6 +72,11 @@ public class WorkflowSessionService {
         this.workflowVersionRepository = workflowVersionRepository;
         this.workflowPageRepository = workflowPageRepository;
         this.workflowContentService = workflowContentService;
+        this.discoveryAgentService = discoveryAgentService;
+        this.researchAgentService = researchAgentService;
+        this.outlineAgentService = outlineAgentService;
+        this.pagePlanAgentService = pagePlanAgentService;
+        this.svgDesignAgentService = svgDesignAgentService;
         this.projectService = projectService;
         this.objectMapper = objectMapper;
     }
@@ -78,7 +98,7 @@ public class WorkflowSessionService {
         session.setStatus(WorkflowSessionStatus.WAITING_USER);
         session.setCurrentStage(WorkflowStage.DISCOVERY);
         session.setSelectedTemplateId(templateId);
-        session.setDiscoveryJson(workflowContentService.generateDiscoveryCard(project));
+        session.setDiscoveryJson(discoveryAgentService.generateDiscoveryCard(project));
         workflowSessionRepository.save(session);
 
         appendMessage(session.getId(), WorkflowMessageRole.USER, WorkflowStage.DISCOVERY, textContent(prompt));
@@ -95,14 +115,14 @@ public class WorkflowSessionService {
 
     @Transactional
     public WorkflowSessionResponse executeCommand(UUID sessionId, WorkflowCommandRequest request) {
-        WorkflowSessionEntity session = findSession(sessionId);
-        ProjectEntity project = projectService.findEntity(session.getProjectId());
+        WorkflowSessionEntity session = findSessionForUpdate(sessionId);
+        ProjectEntity project = projectService.findEntityForUpdate(session.getProjectId());
 
         try {
             switch (request.command()) {
                 case SUBMIT_DISCOVERY -> handleSubmitDiscovery(session, project, request);
                 case CONTINUE_TO_OUTLINE -> handleContinueToOutline(session, project);
-                case APPLY_OUTLINE_FEEDBACK -> handleApplyOutlineFeedback(session, request);
+                case APPLY_OUTLINE_FEEDBACK -> handleApplyOutlineFeedback(session, project, request);
                 case CONTINUE_TO_PAGE_PLAN -> handleContinueToPagePlan(session, project);
                 case CONTINUE_TO_FINAL_DESIGN -> handleContinueToFinalDesign(session, project);
                 default -> throw new ValidationException("不支持的 command", List.of(request.command().name()));
@@ -125,12 +145,21 @@ public class WorkflowSessionService {
             .orElseThrow(() -> new NotFoundException("工作流会话不存在: " + sessionId));
     }
 
+    @Transactional
+    public WorkflowSessionEntity findSessionForUpdate(UUID sessionId) {
+        WorkflowSessionEntity session = workflowSessionRepository.findByIdForUpdate(sessionId);
+        if (session == null) {
+            throw new NotFoundException("工作流会话不存在: " + sessionId);
+        }
+        return session;
+    }
+
     private void handleSubmitDiscovery(WorkflowSessionEntity session, ProjectEntity project, WorkflowCommandRequest request) {
         ensureStage(session, WorkflowStage.DISCOVERY, WorkflowCommandType.SUBMIT_DISCOVERY);
         JsonNode answers = buildDiscoveryAnswers(request);
         appendMessage(session.getId(), WorkflowMessageRole.USER, WorkflowStage.DISCOVERY, answers);
 
-        JsonNode research = workflowContentService.generateResearchSummary(project, answers);
+        JsonNode research = researchAgentService.generateResearchSummary(project, answers);
         String audience = research.path("audience").asText(project.getAudience());
         String titleSuggestion = research.path("titleSuggestion").asText(project.getTitle());
         String templateId = research.path("suggestedTemplateId").asText(session.getSelectedTemplateId());
@@ -149,7 +178,7 @@ public class WorkflowSessionService {
 
     private void handleContinueToOutline(WorkflowSessionEntity session, ProjectEntity project) {
         ensureStage(session, WorkflowStage.RESEARCH, WorkflowCommandType.CONTINUE_TO_OUTLINE);
-        JsonNode outline = workflowContentService.generateOutline(project, session.getResearchJson());
+        JsonNode outline = outlineAgentService.generateOutline(project, session.getResearchJson());
         session.setOutlineJson(outline);
         session.setCurrentStage(WorkflowStage.OUTLINE);
         session.setStatus(WorkflowSessionStatus.WAITING_USER);
@@ -161,7 +190,7 @@ public class WorkflowSessionService {
         appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.OUTLINE, textContent("大纲已经生成好了。你可以查看详情、提出修改意见，然后再继续生成页面策划稿。"));
     }
 
-    private void handleApplyOutlineFeedback(WorkflowSessionEntity session, WorkflowCommandRequest request) {
+    private void handleApplyOutlineFeedback(WorkflowSessionEntity session, ProjectEntity project, WorkflowCommandRequest request) {
         ensureStage(session, WorkflowStage.OUTLINE, WorkflowCommandType.APPLY_OUTLINE_FEEDBACK);
         String feedback = request.feedback() == null ? "" : request.feedback().trim();
         if (feedback.isBlank()) {
@@ -169,8 +198,9 @@ public class WorkflowSessionService {
         }
 
         appendMessage(session.getId(), WorkflowMessageRole.USER, WorkflowStage.OUTLINE, textContent(feedback));
-        JsonNode revisedOutline = workflowContentService.reviseOutline(
-            projectService.findEntity(session.getProjectId()),
+        JsonNode revisedOutline = outlineAgentService.reviseOutline(
+            project,
+            session.getResearchJson(),
             session.getOutlineJson(),
             feedback
         );
@@ -182,7 +212,7 @@ public class WorkflowSessionService {
 
     private void handleContinueToPagePlan(WorkflowSessionEntity session, ProjectEntity project) {
         ensureStage(session, WorkflowStage.OUTLINE, WorkflowCommandType.CONTINUE_TO_PAGE_PLAN);
-        List<JsonNode> pagePlans = workflowContentService.generatePagePlans(project, session.getOutlineJson());
+        List<JsonNode> pagePlans = pagePlanAgentService.generatePagePlans(project, session.getOutlineJson(), session.getSelectedTemplateId());
 
         WorkflowVersionEntity draftVersion = createVersion(
             project.getId(),
@@ -241,7 +271,7 @@ public class WorkflowSessionService {
             page.setTitle(draftPage.getTitle());
             page.setPagePlanJson(draftPage.getPagePlanJson());
             page.setDraftSvg(draftPage.getDraftSvg());
-            page.setFinalSvg(workflowContentService.renderFinalSvg(draftPage.getPagePlanJson(), session.getSelectedTemplateId()));
+            page.setFinalSvg(svgDesignAgentService.generateFinalSvg(draftPage.getPagePlanJson(), session.getSelectedTemplateId()));
             workflowPageRepository.save(page);
         }
 

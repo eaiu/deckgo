@@ -96,6 +96,15 @@ public class ProjectService {
     }
 
     @Transactional
+    public ProjectEntity findEntityForUpdate(UUID projectId) {
+        ProjectEntity project = projectRepository.findByIdForUpdate(projectId);
+        if (project == null) {
+            throw new NotFoundException("项目不存在: " + projectId);
+        }
+        return project;
+    }
+
+    @Transactional
     public ProjectEntity saveEntity(ProjectEntity project) {
         return projectRepository.save(project);
     }

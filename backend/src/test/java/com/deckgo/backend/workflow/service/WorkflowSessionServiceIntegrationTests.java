@@ -4,15 +4,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.deckgo.backend.deckspec.repository.DeckVersionRepository;
+import com.deckgo.backend.common.exception.ValidationException;
 import com.deckgo.backend.workflow.dto.CreateWorkflowSessionRequest;
 import com.deckgo.backend.workflow.dto.WorkflowCommandRequest;
 import com.deckgo.backend.workflow.dto.WorkflowSessionResponse;
 import com.deckgo.backend.workflow.enums.WorkflowCommandType;
 import com.deckgo.backend.workflow.enums.WorkflowSessionStatus;
 import com.deckgo.backend.workflow.enums.WorkflowStage;
+import com.deckgo.backend.workflow.repository.WorkflowVersionRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +28,12 @@ import org.springframework.boot.test.context.SpringBootTest;
     "spring.datasource.password=",
     "spring.flyway.enabled=false",
     "spring.jpa.hibernate.ddl-auto=create-drop",
-    "deckgo.render-worker-delay-ms=600000"
+    "deckgo.render-worker-delay-ms=600000",
+    "deckgo.ai.workflow.discovery.enabled=false",
+    "deckgo.ai.workflow.research.enabled=false",
+    "deckgo.ai.workflow.outline.enabled=false",
+    "deckgo.ai.workflow.page-plan.enabled=false",
+    "deckgo.ai.workflow.svg-design.enabled=false"
 })
 class WorkflowSessionServiceIntegrationTests {
 
@@ -34,6 +42,9 @@ class WorkflowSessionServiceIntegrationTests {
 
     @Autowired
     private DeckVersionRepository deckVersionRepository;
+
+    @Autowired
+    private WorkflowVersionRepository workflowVersionRepository;
 
     @Test
     void shouldRunSvgWorkflowStagesEndToEndWithoutCreatingLegacyDeckVersions() {
@@ -98,5 +109,14 @@ class WorkflowSessionServiceIntegrationTests {
         assertEquals(WorkflowSessionStatus.COMPLETED, finalized.status());
         assertTrue(finalized.pages().stream().allMatch(page -> page.finalSvg() != null && page.finalSvg().contains("<svg")));
         assertEquals(0, deckVersionRepository.count());
+
+        assertThrows(
+            ValidationException.class,
+            () -> workflowSessionService.executeCommand(
+                created.sessionId(),
+                new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_FINAL_DESIGN, null, null, null)
+            )
+        );
+        assertEquals(2, workflowVersionRepository.findTopByProjectIdOrderByVersionNumberDesc(created.project().id()).orElseThrow().getVersionNumber());
     }
 }

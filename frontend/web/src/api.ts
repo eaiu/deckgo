@@ -30,6 +30,7 @@ export interface ProjectDto {
   templateId: string;
   currentVersionId?: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface DeckVersionDto {
