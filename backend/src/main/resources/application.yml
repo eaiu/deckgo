@@ -40,3 +40,24 @@ deckgo:
     allowed-origins: ${DECKGO_CORS_ALLOWED_ORIGINS:http://localhost:5173}
   ai:
     fallback-enabled: ${DECKGO_AI_FALLBACK_ENABLED:true}
+    workflow:
+      discovery:
+        enabled: ${DECKGO_AI_WORKFLOW_DISCOVERY_ENABLED:true}
+        model: ${DECKGO_AI_WORKFLOW_DISCOVERY_MODEL:}
+        temperature: ${DECKGO_AI_WORKFLOW_DISCOVERY_TEMPERATURE:0.4}
+      research:
+        enabled: ${DECKGO_AI_WORKFLOW_RESEARCH_ENABLED:true}
+        model: ${DECKGO_AI_WORKFLOW_RESEARCH_MODEL:}
+        temperature: ${DECKGO_AI_WORKFLOW_RESEARCH_TEMPERATURE:0.45}
+      outline:
+        enabled: ${DECKGO_AI_WORKFLOW_OUTLINE_ENABLED:true}
+        model: ${DECKGO_AI_WORKFLOW_OUTLINE_MODEL:}
+        temperature: ${DECKGO_AI_WORKFLOW_OUTLINE_TEMPERATURE:0.5}
+      page-plan:
+        enabled: ${DECKGO_AI_WORKFLOW_PAGE_PLAN_ENABLED:true}
+        model: ${DECKGO_AI_WORKFLOW_PAGE_PLAN_MODEL:}
+        temperature: ${DECKGO_AI_WORKFLOW_PAGE_PLAN_TEMPERATURE:0.55}
+      svg-design:
+        enabled: ${DECKGO_AI_WORKFLOW_SVG_DESIGN_ENABLED:true}
+        model: ${DECKGO_AI_WORKFLOW_SVG_DESIGN_MODEL:}
+        temperature: ${DECKGO_AI_WORKFLOW_SVG_DESIGN_TEMPERATURE:0.7}

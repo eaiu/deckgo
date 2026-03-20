@@ -57,6 +57,7 @@ public class DeckGoProperties {
 
     public static class Ai {
         private boolean fallbackEnabled = true;
+        private final Workflow workflow = new Workflow();
 
         public boolean isFallbackEnabled() {
             return fallbackEnabled;
@@ -64,6 +65,68 @@ public class DeckGoProperties {
 
         public void setFallbackEnabled(boolean fallbackEnabled) {
             this.fallbackEnabled = fallbackEnabled;
+        }
+
+        public Workflow getWorkflow() {
+            return workflow;
+        }
+    }
+
+    public static class Workflow {
+        private final Agent discovery = new Agent();
+        private final Agent research = new Agent();
+        private final Agent outline = new Agent();
+        private final Agent pagePlan = new Agent();
+        private final Agent svgDesign = new Agent();
+
+        public Agent getDiscovery() {
+            return discovery;
+        }
+
+        public Agent getResearch() {
+            return research;
+        }
+
+        public Agent getOutline() {
+            return outline;
+        }
+
+        public Agent getPagePlan() {
+            return pagePlan;
+        }
+
+        public Agent getSvgDesign() {
+            return svgDesign;
+        }
+    }
+
+    public static class Agent {
+        private boolean enabled = true;
+        private String model = "";
+        private Double temperature;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getModel() {
+            return model;
+        }
+
+        public void setModel(String model) {
+            this.model = model;
+        }
+
+        public Double getTemperature() {
+            return temperature;
+        }
+
+        public void setTemperature(Double temperature) {
+            this.temperature = temperature;
         }
     }
 
