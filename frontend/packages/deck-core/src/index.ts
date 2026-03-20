@@ -110,15 +110,15 @@ export interface TemplateSummary {
   defaultTheme: ThemePalette;
 }
 
-export type WorkflowStage = "DISCOVERY" | "RESEARCH" | "OUTLINE" | "DRAFT" | "FINAL";
+export type WorkflowStage = "DISCOVERY" | "OUTLINE" | "RESEARCH" | "PLANNING" | "DESIGN";
 export type WorkflowSessionStatus = "WAITING_USER" | "COMPLETED" | "FAILED";
 export type WorkflowMessageRole = "USER" | "ASSISTANT" | "SYSTEM";
 export type WorkflowCommandType =
   | "SUBMIT_DISCOVERY"
-  | "CONTINUE_TO_OUTLINE"
   | "APPLY_OUTLINE_FEEDBACK"
-  | "CONTINUE_TO_PAGE_PLAN"
-  | "CONTINUE_TO_FINAL_DESIGN";
+  | "CONTINUE_TO_RESEARCH"
+  | "CONTINUE_TO_PLANNING"
+  | "CONTINUE_TO_DESIGN";
 
 export interface DiscoveryOption {
   id: string;
@@ -139,14 +139,22 @@ export interface DiscoveryCard {
   questions: DiscoveryQuestion[];
 }
 
-export interface ResearchSummary {
-  audience: string;
+export interface BackgroundSummary {
   summary: string;
-  suggestedTemplateId: string;
-  titleSuggestion: string;
-  assumptions: string[];
-  comparisonPoints: string[];
-  keyFindings: string[];
+  topicUnderstanding?: string;
+  answer?: string;
+  sources: Array<{
+    title: string;
+    url: string;
+    content: string;
+    score?: number;
+    favicon?: string;
+  }>;
+}
+
+export interface DiscoveryAnswers {
+  selectedOptionIds: string[];
+  freeformAnswer?: string;
 }
 
 export interface OutlinePage {
@@ -169,7 +177,7 @@ export interface OutlineDoc {
 }
 
 export type PageLayout = "hero" | "two-column" | "three-column" | "comparison" | "timeline" | "bento-grid" | "summary";
-export type PageCardKind = "text" | "metric" | "comparison" | "timeline" | "quote" | "image" | "highlight";
+export type PageCardKind = "text" | "metric" | "chart" | "table" | "comparison" | "timeline" | "quote" | "image" | "highlight";
 
 export interface PagePlanCard {
   id: string;
@@ -177,6 +185,9 @@ export interface PagePlanCard {
   heading: string;
   body: string;
   supportingPoints?: string[];
+  chartType?: string;
+  tableHeaders?: string[];
+  imageIntent?: string;
   emphasis?: "high" | "medium" | "low";
 }
 
@@ -198,6 +209,25 @@ export interface SvgPage {
   draftSvg?: string | null;
   finalSvg?: string | null;
 }
+
+export interface PageResearchItem {
+  pageId: string;
+  title: string;
+  needsSearch: boolean;
+  searchIntent: string;
+  queries: string[];
+  searchDepth: string;
+  findings: string;
+  sources: Array<{
+    title: string;
+    url: string;
+    content: string;
+    score?: number;
+    favicon?: string;
+  }>;
+}
+
+export type PageResearch = PageResearchItem[];
 
 export interface WorkflowMessage {
   id: string;
@@ -229,9 +259,11 @@ export interface WorkflowSessionSnapshot {
   lastError?: string | null;
   project: WorkflowProjectSummary;
   messages: WorkflowMessage[];
+  backgroundSummary?: BackgroundSummary | null;
   discoveryCard?: DiscoveryCard | null;
-  researchSummary?: ResearchSummary | null;
+  discoveryAnswers?: DiscoveryAnswers | null;
   outline?: OutlineDoc | null;
+  pageResearch?: PageResearch | null;
   pages: SvgPage[];
   updatedAt: string;
 }
@@ -262,13 +294,13 @@ export function workflowStageLabel(stage: WorkflowStage): string {
   switch (stage) {
     case "DISCOVERY":
       return "背景调研";
-    case "RESEARCH":
-      return "资料整理";
     case "OUTLINE":
       return "大纲策划";
-    case "DRAFT":
-      return "策划稿";
-    case "FINAL":
+    case "RESEARCH":
+      return "资料搜集";
+    case "PLANNING":
+      return "策划阶段";
+    case "DESIGN":
       return "最终设计稿";
   }
 }

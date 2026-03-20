@@ -17,22 +17,18 @@ public class OutlineAgentService extends AbstractWorkflowAgentService {
         ## Profile
         - 版本：2.0 (Context-Aware)
         - 专业：PPT逻辑结构设计
-        - 特长：运用金字塔原理，结合背景调研信息构建清晰的演示逻辑
+        - 特长：运用金字塔原理，结合背景信息和用户回答构建清晰的演示逻辑
 
         ## Goals
-        基于用户提供的 PPT 主题和背景调研信息，设计一份逻辑严密、层次清晰的 PPT 大纲。
+        基于用户提供的 PPT 主题、背景摘要和 discovery 回答，设计一份逻辑严密、层次清晰的 PPT 大纲。
 
         ## Core Methodology: 金字塔原理
-        1. 结论先行：每个部分以核心观点开篇
-        2. 以上统下：上层观点是下层内容的总结
-        3. 归类分组：同一层级的内容属于同一逻辑范畴
-        4. 逻辑递进：内容按照某种逻辑顺序展开
-
-        ## 重要：利用调研信息
-        请务必参考背景调研信息来规划大纲，使其切合当前需求上下文，而不是凭空捏造。
+        1. 结论先行
+        2. 以上统下
+        3. 归类分组
+        4. 逻辑递进
 
         ## 输出要求
-        不要使用原始 [PPT_OUTLINE] 包裹格式。
         请直接返回结构化结果，字段固定为：
         - title
         - narrative
@@ -46,6 +42,7 @@ public class OutlineAgentService extends AbstractWorkflowAgentService {
         - title
         - intent
 
+        discovery 中页数要求必须被严格遵守。
         每一页都必须有一句页面意图说明。
         不要输出解释，不要输出 Markdown。
         """;
@@ -62,7 +59,7 @@ public class OutlineAgentService extends AbstractWorkflowAgentService {
         this.workflowContentService = workflowContentService;
     }
 
-    public JsonNode generateOutline(ProjectEntity project, JsonNode researchSummary) {
+    public JsonNode generateOutline(ProjectEntity project, JsonNode backgroundSummary, JsonNode discoveryAnswers) {
         return useAgentOrFallback(
             "OutlineAgent",
             properties.getAi().getWorkflow().getOutline(),
@@ -73,25 +70,31 @@ public class OutlineAgentService extends AbstractWorkflowAgentService {
                         主题：
                         %s
 
-                        背景调研信息：
+                        背景信息：
                         %s
 
-                        页数要求：
-                        5 到 7 页
+                        discovery 回答：
+                        %s
 
                         请生成 outline。
-                        """.formatted(project.getTopic(), asJson(researchSummary)))
+                        """.formatted(project.getTopic(), asJson(backgroundSummary), asJson(discoveryAnswers)))
                     .call()
                     .entity(OutlineDocument.class);
 
                 validateOutline(outline);
                 return objectMapper.valueToTree(outline);
             },
-            () -> workflowContentService.generateOutline(project, researchSummary)
+            () -> workflowContentService.generateOutline(project, backgroundSummary, discoveryAnswers)
         );
     }
 
-    public JsonNode reviseOutline(ProjectEntity project, JsonNode researchSummary, JsonNode currentOutline, String feedback) {
+    public JsonNode reviseOutline(
+        ProjectEntity project,
+        JsonNode backgroundSummary,
+        JsonNode discoveryAnswers,
+        JsonNode currentOutline,
+        String feedback
+    ) {
         return useAgentOrFallback(
             "OutlineAgent",
             properties.getAi().getWorkflow().getOutline(),
@@ -102,7 +105,10 @@ public class OutlineAgentService extends AbstractWorkflowAgentService {
                         主题：
                         %s
 
-                        背景调研信息：
+                        背景信息：
+                        %s
+
+                        discovery 回答：
                         %s
 
                         当前 outline：
@@ -112,14 +118,14 @@ public class OutlineAgentService extends AbstractWorkflowAgentService {
                         %s
 
                         请输出修订后的完整 outline，不要只输出差异。
-                        """.formatted(project.getTopic(), asJson(researchSummary), asJson(currentOutline), feedback))
+                        """.formatted(project.getTopic(), asJson(backgroundSummary), asJson(discoveryAnswers), asJson(currentOutline), feedback))
                     .call()
                     .entity(OutlineDocument.class);
 
                 validateOutline(outline);
                 return objectMapper.valueToTree(outline);
             },
-            () -> workflowContentService.reviseOutline(project, currentOutline, feedback)
+            () -> workflowContentService.reviseOutline(project, backgroundSummary, discoveryAnswers, currentOutline, feedback)
         );
     }
 

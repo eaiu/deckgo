@@ -64,6 +64,8 @@
             "enum": [
               "text",
               "metric",
+              "chart",
+              "table",
               "comparison",
               "timeline",
               "quote",
@@ -84,6 +86,18 @@
             "items": {
               "type": "string"
             }
+          },
+          "chartType": {
+            "type": "string"
+          },
+          "tableHeaders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "imageIntent": {
+            "type": "string"
           },
           "emphasis": {
             "type": "string",

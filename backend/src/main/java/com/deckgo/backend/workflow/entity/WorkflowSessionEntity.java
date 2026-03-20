@@ -49,16 +49,24 @@ public class WorkflowSessionEntity implements Persistable<UUID> {
     private String selectedTemplateId;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "background_json", columnDefinition = "jsonb")
+    private JsonNode backgroundJson;
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "discovery_json", columnDefinition = "jsonb")
     private JsonNode discoveryJson;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "research_json", columnDefinition = "jsonb")
-    private JsonNode researchJson;
+    @Column(name = "discovery_answers_json", columnDefinition = "jsonb")
+    private JsonNode discoveryAnswersJson;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "outline_json", columnDefinition = "jsonb")
     private JsonNode outlineJson;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "page_research_json", columnDefinition = "jsonb")
+    private JsonNode pageResearchJson;
 
     @Column(name = "last_error", length = 2000)
     private String lastError;
@@ -141,6 +149,14 @@ public class WorkflowSessionEntity implements Persistable<UUID> {
         this.selectedTemplateId = selectedTemplateId;
     }
 
+    public JsonNode getBackgroundJson() {
+        return backgroundJson;
+    }
+
+    public void setBackgroundJson(JsonNode backgroundJson) {
+        this.backgroundJson = backgroundJson;
+    }
+
     public JsonNode getDiscoveryJson() {
         return discoveryJson;
     }
@@ -149,12 +165,12 @@ public class WorkflowSessionEntity implements Persistable<UUID> {
         this.discoveryJson = discoveryJson;
     }
 
-    public JsonNode getResearchJson() {
-        return researchJson;
+    public JsonNode getDiscoveryAnswersJson() {
+        return discoveryAnswersJson;
     }
 
-    public void setResearchJson(JsonNode researchJson) {
-        this.researchJson = researchJson;
+    public void setDiscoveryAnswersJson(JsonNode discoveryAnswersJson) {
+        this.discoveryAnswersJson = discoveryAnswersJson;
     }
 
     public JsonNode getOutlineJson() {
@@ -163,6 +179,14 @@ public class WorkflowSessionEntity implements Persistable<UUID> {
 
     public void setOutlineJson(JsonNode outlineJson) {
         this.outlineJson = outlineJson;
+    }
+
+    public JsonNode getPageResearchJson() {
+        return pageResearchJson;
+    }
+
+    public void setPageResearchJson(JsonNode pageResearchJson) {
+        this.pageResearchJson = pageResearchJson;
     }
 
     public String getLastError() {

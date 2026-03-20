@@ -17,11 +17,12 @@ public class PagePlanAgentService extends AbstractWorkflowAgentService {
     private static final String SYSTEM_PROMPT = """
         你是 DeckGo 的页面策划助手。
         请直接复用“策划稿 / 数字便利贴”的思路：
-        - 不要直接做最终设计
-        - 每一页先变成一张数字便利贴
-        - 先明确这页想表达什么，再决定用什么布局和卡片组织信息
+        - 先明确页面目的
+        - 再明确区域划分
+        - 再明确哪些区域是文本、图、表、图表、时间线或对比块
+        - 最后决定布局
 
-        你的任务是根据 outline 输出全部页面的 PagePlan。
+        你的任务是根据 outline、背景信息、discovery 回答和逐页 research 结果，输出全部页面的完整 PagePlan。
         每个 PagePlan 必须包含：
         - pageId
         - title
@@ -31,17 +32,14 @@ public class PagePlanAgentService extends AbstractWorkflowAgentService {
         - speakerNotes
         - cards[]
 
-        layout 只能使用：
-        hero, two-column, three-column, comparison, timeline, bento-grid, summary
+        cards 的 kind 可以使用：
+        text, metric, comparison, timeline, quote, image, highlight, chart, table
 
-        每个 card 必须包含：
-        - id
-        - kind
-        - heading
-        - body
-        - emphasis
+        对 image / chart / table：
+        - image 要给出 imageIntent
+        - chart 要给出 chartType
+        - table 要给出 tableHeaders
 
-        cards 的 body 必须是完整句子。
         风格以极简、白底、黑字、蓝色点缀为默认方向。
         不要输出 Markdown，不要解释，只返回结构化结果。
         """;
@@ -67,7 +65,14 @@ public class PagePlanAgentService extends AbstractWorkflowAgentService {
         this.templateCatalogService = templateCatalogService;
     }
 
-    public List<JsonNode> generatePagePlans(ProjectEntity project, JsonNode outline, String templateId) {
+    public List<JsonNode> generatePagePlans(
+        ProjectEntity project,
+        JsonNode backgroundSummary,
+        JsonNode discoveryAnswers,
+        JsonNode outline,
+        JsonNode pageResearch,
+        String templateId
+    ) {
         return useAgentOrFallback(
             "PagePlanAgent",
             properties.getAi().getWorkflow().getPagePlan(),
@@ -78,7 +83,16 @@ public class PagePlanAgentService extends AbstractWorkflowAgentService {
                         主题：
                         %s
 
+                        背景信息：
+                        %s
+
+                        discovery 回答：
+                        %s
+
                         outline：
+                        %s
+
+                        逐页 research：
                         %s
 
                         当前模板：
@@ -87,7 +101,10 @@ public class PagePlanAgentService extends AbstractWorkflowAgentService {
                         请输出全部页面的 PagePlan。
                         """.formatted(
                         project.getTopic(),
+                        asJson(backgroundSummary),
+                        asJson(discoveryAnswers),
                         asJson(outline),
+                        asJson(pageResearch),
                         asJson(templateCatalogService.getTemplate(templateId))
                     ))
                     .tools(templateCatalogTools)
@@ -106,7 +123,7 @@ public class PagePlanAgentService extends AbstractWorkflowAgentService {
                 }
                 return pagePlans;
             },
-            () -> workflowContentService.generatePagePlans(project, outline)
+            () -> workflowContentService.generatePagePlans(project, outline, pageResearch)
         );
     }
 
@@ -130,7 +147,10 @@ public class PagePlanAgentService extends AbstractWorkflowAgentService {
         String heading,
         String body,
         String emphasis,
-        List<String> supportingPoints
+        List<String> supportingPoints,
+        String chartType,
+        List<String> tableHeaders,
+        String imageIntent
     ) {
     }
 }

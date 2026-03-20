@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.deckgo.backend.deckspec.repository.DeckVersionRepository;
 import com.deckgo.backend.common.exception.ValidationException;
+import com.deckgo.backend.deckspec.repository.DeckVersionRepository;
 import com.deckgo.backend.workflow.dto.CreateWorkflowSessionRequest;
 import com.deckgo.backend.workflow.dto.WorkflowCommandRequest;
 import com.deckgo.backend.workflow.dto.WorkflowSessionResponse;
@@ -29,6 +29,7 @@ import org.springframework.boot.test.context.SpringBootTest;
     "spring.flyway.enabled=false",
     "spring.jpa.hibernate.ddl-auto=create-drop",
     "deckgo.render-worker-delay-ms=600000",
+    "deckgo.ai.tavily.enabled=false",
     "deckgo.ai.workflow.discovery.enabled=false",
     "deckgo.ai.workflow.research.enabled=false",
     "deckgo.ai.workflow.outline.enabled=false",
@@ -47,38 +48,32 @@ class WorkflowSessionServiceIntegrationTests {
     private WorkflowVersionRepository workflowVersionRepository;
 
     @Test
-    void shouldRunSvgWorkflowStagesEndToEndWithoutCreatingLegacyDeckVersions() {
+    void shouldRunNewWorkflowOrderEndToEndWithoutCreatingLegacyDeckVersions() {
         WorkflowSessionResponse created = workflowSessionService.createSession(
             new CreateWorkflowSessionRequest("为一个 AI 项目写一份产品介绍 PPT")
         );
 
         assertEquals(WorkflowStage.DISCOVERY, created.currentStage());
         assertEquals(WorkflowSessionStatus.WAITING_USER, created.status());
-        assertEquals(2, created.messages().size());
+        assertNotNull(created.backgroundSummary());
         assertNotNull(created.discoveryCard());
-        assertNull(created.currentVersionId());
+        assertNull(created.discoveryAnswers());
+        assertNull(created.outline());
         assertEquals(0, deckVersionRepository.count());
 
-        WorkflowSessionResponse researched = workflowSessionService.executeCommand(
+        WorkflowSessionResponse outlined = workflowSessionService.executeCommand(
             created.sessionId(),
             new WorkflowCommandRequest(
                 WorkflowCommandType.SUBMIT_DISCOVERY,
-                List.of("management", "comparison-yes"),
-                "希望最后有一页行动建议",
+                List.of("count-10-15", "scene-report"),
+                "希望整体更偏正式汇报",
                 null
             )
         );
 
-        assertEquals(WorkflowStage.RESEARCH, researched.currentStage());
-        assertNotNull(researched.researchSummary());
-        assertEquals("管理层", researched.project().audience());
-
-        WorkflowSessionResponse outlined = workflowSessionService.executeCommand(
-            created.sessionId(),
-            new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_OUTLINE, null, null, null)
-        );
-
         assertEquals(WorkflowStage.OUTLINE, outlined.currentStage());
+        assertNotNull(outlined.discoveryAnswers());
+        assertNotNull(outlined.outline());
         assertTrue(outlined.outline().path("sections").size() >= 1);
 
         WorkflowSessionResponse revised = workflowSessionService.executeCommand(
@@ -88,33 +83,43 @@ class WorkflowSessionServiceIntegrationTests {
 
         assertEquals(WorkflowStage.OUTLINE, revised.currentStage());
         assertTrue(revised.outline().path("sections").get(0).path("revisionNote").asText("").contains("方案说明"));
+        assertNull(revised.pageResearch());
 
-        WorkflowSessionResponse drafted = workflowSessionService.executeCommand(
+        WorkflowSessionResponse researched = workflowSessionService.executeCommand(
             created.sessionId(),
-            new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_PAGE_PLAN, null, null, null)
+            new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_RESEARCH, null, null, null)
         );
 
-        assertEquals(WorkflowStage.DRAFT, drafted.currentStage());
-        assertNotNull(drafted.currentVersionId());
-        assertFalse(drafted.pages().isEmpty());
-        assertNotNull(drafted.pages().get(0).pagePlan());
-        assertTrue(drafted.pages().get(0).draftSvg().contains("<svg"));
+        assertEquals(WorkflowStage.RESEARCH, researched.currentStage());
+        assertNotNull(researched.pageResearch());
+        assertTrue(researched.pageResearch().isArray());
 
-        WorkflowSessionResponse finalized = workflowSessionService.executeCommand(
+        WorkflowSessionResponse planned = workflowSessionService.executeCommand(
             created.sessionId(),
-            new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_FINAL_DESIGN, null, null, null)
+            new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_PLANNING, null, null, null)
         );
 
-        assertEquals(WorkflowStage.FINAL, finalized.currentStage());
-        assertEquals(WorkflowSessionStatus.COMPLETED, finalized.status());
-        assertTrue(finalized.pages().stream().allMatch(page -> page.finalSvg() != null && page.finalSvg().contains("<svg")));
+        assertEquals(WorkflowStage.PLANNING, planned.currentStage());
+        assertNotNull(planned.currentVersionId());
+        assertFalse(planned.pages().isEmpty());
+        assertNotNull(planned.pages().get(0).pagePlan());
+        assertTrue(planned.pages().get(0).draftSvg().contains("<svg"));
+
+        WorkflowSessionResponse designed = workflowSessionService.executeCommand(
+            created.sessionId(),
+            new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_DESIGN, null, null, null)
+        );
+
+        assertEquals(WorkflowStage.DESIGN, designed.currentStage());
+        assertEquals(WorkflowSessionStatus.COMPLETED, designed.status());
+        assertTrue(designed.pages().stream().allMatch(page -> page.finalSvg() != null && page.finalSvg().contains("<svg")));
         assertEquals(0, deckVersionRepository.count());
 
         assertThrows(
             ValidationException.class,
             () -> workflowSessionService.executeCommand(
                 created.sessionId(),
-                new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_FINAL_DESIGN, null, null, null)
+                new WorkflowCommandRequest(WorkflowCommandType.CONTINUE_TO_DESIGN, null, null, null)
             )
         );
         assertEquals(2, workflowVersionRepository.findTopByProjectIdOrderByVersionNumberDesc(created.project().id()).orElseThrow().getVersionNumber());

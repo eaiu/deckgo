@@ -58,6 +58,7 @@ public class DeckGoProperties {
     public static class Ai {
         private boolean fallbackEnabled = true;
         private final Workflow workflow = new Workflow();
+        private final Tavily tavily = new Tavily();
 
         public boolean isFallbackEnabled() {
             return fallbackEnabled;
@@ -69,6 +70,10 @@ public class DeckGoProperties {
 
         public Workflow getWorkflow() {
             return workflow;
+        }
+
+        public Tavily getTavily() {
+            return tavily;
         }
     }
 
@@ -127,6 +132,63 @@ public class DeckGoProperties {
 
         public void setTemperature(Double temperature) {
             this.temperature = temperature;
+        }
+    }
+
+    public static class Tavily {
+        private boolean enabled = true;
+        private String apiKey = "";
+        private String baseUrl = "https://api.tavily.com";
+        private String searchDepth = "basic";
+        private Integer maxResults = 20;
+        private String topic = "general";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+
+        public String getSearchDepth() {
+            return searchDepth;
+        }
+
+        public void setSearchDepth(String searchDepth) {
+            this.searchDepth = searchDepth;
+        }
+
+        public Integer getMaxResults() {
+            return maxResults;
+        }
+
+        public void setMaxResults(Integer maxResults) {
+            this.maxResults = maxResults;
+        }
+
+        public String getTopic() {
+            return topic;
+        }
+
+        public void setTopic(String topic) {
+            this.topic = topic;
         }
     }
 

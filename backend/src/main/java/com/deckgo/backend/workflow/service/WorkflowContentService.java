@@ -50,91 +50,80 @@ public class WorkflowContentService {
         return cleaned.length() > 28 ? cleaned.substring(0, 28) : cleaned;
     }
 
-    public JsonNode generateDiscoveryCard(ProjectEntity project) {
+    public JsonNode generateBackgroundSummary(ProjectEntity project) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("summary", "当前主题是“" + project.getTopic() + "”。需要先解释它是什么、为什么值得讲，以及这份演示希望让听众带走什么。");
+        root.put("topicUnderstanding", "这是一个需要先做背景介绍、再进入核心内容的主题。");
+        ArrayNode sources = root.putArray("sources");
+        sources.add(source("背景定义", "about:" + project.getTopic(), "基于主题生成的本地背景摘要。"));
+        return root;
+    }
+
+    public JsonNode generateDiscoveryCard(ProjectEntity project, JsonNode backgroundSummary) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("title", "先确认几个关键问题");
-        root.put("description", "我会先补齐需求边界，再继续往大纲和页面策划推进。");
-        root.put("freeformHint", "如果你还有特别要求，可以继续补充，例如页数、必须出现的内容、避免的内容。");
+        root.put("description", backgroundSummary.path("summary").asText("先补齐需求边界，再继续往大纲和页面策划推进。"));
+        root.put("freeformHint", "如果你还有特别要求，可以继续补充，例如必须出现的内容、想突出哪一部分。");
 
         ArrayNode questions = root.putArray("questions");
         questions.add(question(
-            "audience-focus",
-            "这份 PPT 更主要是给谁看？",
+            "page-count",
+            "你希望最终页数大概落在哪个区间？",
             List.of(
-                option("management", "管理层", "偏结论和决策"),
-                option("customer", "客户/外部对象", "偏价值和说服"),
-                option("team", "内部团队", "偏执行和协作")
+                option("count-5-10", "5-10", "适合短汇报或快速说明"),
+                option("count-10-15", "10-15", "适合标准结构化介绍"),
+                option("count-15-20", "15-20", "适合完整讲解和深入展开"),
+                option("count-free", "自由发挥", "由系统按内容判断")
             )
         ));
         questions.add(question(
-            "comparison",
-            "是否需要加入竞品或对比分析？",
-            List.of(
-                option("comparison-yes", "需要对比", "加入竞品或替代方案视角"),
-                option("comparison-lite", "少量对比", "保留一页或一段对比"),
-                option("comparison-no", "不需要", "聚焦自身内容")
-            )
-        ));
-        questions.add(question(
-            "tone",
-            "你更希望整体表达风格偏哪一类？",
-            List.of(
-                option("formal", "正式商务", "偏清晰、稳重"),
-                option("teaching", "教学说明", "偏结构化和解释"),
-                option("storytelling", "故事化提案", "偏说服和节奏")
-            )
+            "usage-scenario",
+            "这份 PPT 主要会用在什么场景？",
+            scenarioOptions(project.getTopic())
         ));
         return root;
     }
 
-    public JsonNode generateResearchSummary(ProjectEntity project, JsonNode discoveryAnswers) {
+    public JsonNode generateOutline(ProjectEntity project, JsonNode backgroundSummary, JsonNode discoveryAnswers) {
+        String title = deriveProjectTitle(project.getTopic());
+        String pageCount = selectedDiscoveryValue(discoveryAnswers, "page-count");
+        int targetPages = switch (pageCount) {
+            case "count-5-10" -> 6;
+            case "count-10-15" -> 10;
+            case "count-15-20" -> 14;
+            default -> 8;
+        };
+
         ObjectNode root = objectMapper.createObjectNode();
-        root.put("audience", inferAudience(discoveryAnswers));
-        root.put("summary", "这份演示文稿将围绕“" + project.getTopic() + "”展开，先建立问题背景，再呈现核心观点，最后给出可执行结论。");
-        root.put("suggestedTemplateId", deriveTemplateId(project.getTopic()));
-        root.put("titleSuggestion", deriveProjectTitle(project.getTopic()));
-
-        ArrayNode assumptions = root.putArray("assumptions");
-        assumptions.add("当前阶段不接真实外部搜索，资料整理以用户输入和上下文推导为主。");
-        assumptions.add("演示目标是让受众快速理解主题，并给出下一步行动建议。");
-
-        ArrayNode comparisonPoints = root.putArray("comparisonPoints");
-        if (containsSelection(discoveryAnswers, "comparison-yes") || containsSelection(discoveryAnswers, "comparison-lite")) {
-            comparisonPoints.add("加入竞品或替代方案对比");
-            comparisonPoints.add("明确自身优势与取舍");
-        } else {
-            comparisonPoints.add("不以竞品对比为主，突出自身主张");
-        }
-
-        ArrayNode keyFindings = root.putArray("keyFindings");
-        keyFindings.add("需要先讲清楚问题背景，再进入方案内容。");
-        keyFindings.add("适合使用章节化叙事和卡片式信息组织。");
-        keyFindings.add("结尾页需要明确收束并给出下一步动作。");
-        return root;
-    }
-
-    public JsonNode generateOutline(ProjectEntity project, JsonNode researchSummary) {
-        ObjectNode root = objectMapper.createObjectNode();
-        String title = researchSummary.path("titleSuggestion").asText(deriveProjectTitle(project.getTopic()));
         root.put("title", title);
-        root.put("narrative", "先建立背景，再给出核心观点，最后落到行动建议。");
-
+        root.put("narrative", backgroundSummary.path("summary").asText("先介绍背景，再展开核心内容，最后给出结论。"));
         ArrayNode sections = root.putArray("sections");
-        sections.add(section("section-1", "背景与目标", List.of(
-            page("page-1", title, "用封面快速建立主题和语境"),
-            page("page-2", "为什么现在要关注这个问题", "说明背景、机会或痛点")
-        )));
-        sections.add(section("section-2", "核心内容", List.of(
-            page("page-3", "关键观点与结构", "用结构化页面解释核心逻辑"),
-            page("page-4", "重点内容展开", "展示支撑观点的要点或对比")
-        )));
-        sections.add(section("section-3", "总结与下一步", List.of(
-            page("page-5", "结论与行动建议", "收束前文并给出下一步")
-        )));
+
+        ArrayNode introPages = objectMapper.createArrayNode()
+            .add(page("page-1", title, "用封面建立主题和语境"))
+            .add(page("page-2", "这到底是什么", "用简明方式解释主题的基本背景"));
+        sections.add(section("section-1", "背景与认知", introPages));
+
+        ArrayNode corePages = objectMapper.createArrayNode()
+            .add(page("page-3", "为什么值得关注", "说明它的价值、意义或当前变化"))
+            .add(page("page-4", "核心结构与关键点", "拆出最重要的部分或机制"))
+            .add(page("page-5", "关键细节展开", "展开一到两个最值得看的重点"));
+        if (targetPages >= 10) {
+            corePages.add(page("page-6", "进阶内容与案例", "补充案例、对比或更深入的说明"));
+            corePages.add(page("page-7", "风险与限制", "补充边界、难点或现实限制"));
+        }
+        sections.add(section("section-2", "核心内容", corePages));
+
+        ArrayNode closingPages = objectMapper.createArrayNode()
+            .add(page("page-8", "总结与下一步", "收束前文并给出行动建议"));
+        if (targetPages >= 14) {
+            closingPages.add(page("page-9", "附录或延伸阅读", "放补充内容和延伸方向"));
+        }
+        sections.add(section("section-3", "收束", closingPages));
         return root;
     }
 
-    public JsonNode reviseOutline(ProjectEntity project, JsonNode currentOutline, String feedback) {
+    public JsonNode reviseOutline(ProjectEntity project, JsonNode backgroundSummary, JsonNode discoveryAnswers, JsonNode currentOutline, String feedback) {
         ObjectNode revised = currentOutline.deepCopy();
         revised.put("narrative", currentOutline.path("narrative").asText("") + " 用户补充要求：" + feedback);
         ArrayNode sections = (ArrayNode) revised.withArray("sections");
@@ -144,36 +133,63 @@ public class WorkflowContentService {
         return revised;
     }
 
-    public List<JsonNode> generatePagePlans(ProjectEntity project, JsonNode outline) {
-        List<JsonNode> pagePlans = new ArrayList<>();
-        int index = 0;
+    public JsonNode generatePageResearch(ProjectEntity project, JsonNode outline) {
+        ArrayNode pages = objectMapper.createArrayNode();
         for (JsonNode section : outline.path("sections")) {
             for (JsonNode page : section.path("pages")) {
-                ObjectNode node = objectMapper.createObjectNode();
-                node.put("pageId", page.path("id").asText(UUID.randomUUID().toString()));
-                node.put("title", page.path("title").asText("未命名页面"));
-                node.put("goal", page.path("intent").asText("解释当前页面的核心意图"));
-                node.put("layout", switch (index % 5) {
-                    case 0 -> "hero";
-                    case 1 -> "two-column";
-                    case 2 -> "bento-grid";
-                    case 3 -> "comparison";
-                    default -> "summary";
-                });
-                node.put("visualTone", "clean");
-                node.put("speakerNotes", "围绕主题“" + project.getTopic() + "”展开。");
-
-                ArrayNode cards = node.putArray("cards");
-                cards.add(card("card-1", "highlight", page.path("title").asText("核心标题"), page.path("intent").asText("解释当前页面的核心意图")));
-                cards.add(card("card-2", "text", "关键点一", "用一句完整的话补充这页最重要的说明。"));
-                if (index % 5 != 0) {
-                    cards.add(card("card-3", "text", "关键点二", "用第二个卡片承载补充信息、数据或对比。"));
-                }
-
-                pagePlanSchemaService.validate(node);
-                pagePlans.add(node);
-                index++;
+                ObjectNode item = objectMapper.createObjectNode();
+                item.put("pageId", page.path("id").asText(UUID.randomUUID().toString()));
+                item.put("title", page.path("title").asText(""));
+                item.put("needsSearch", !page.path("title").asText("").contains("封面") && !page.path("title").asText("").contains("总结"));
+                item.put("searchIntent", "为这一页补充可靠背景、案例或事实支撑。");
+                ArrayNode queries = item.putArray("queries");
+                queries.add(page.path("title").asText(project.getTopic()));
+                item.put("searchDepth", "basic");
+                item.put("findings", "当前使用 fallback，后续可由检索结果补齐。");
+                item.putArray("sources");
+                pages.add(item);
             }
+        }
+        return pages;
+    }
+
+    public List<JsonNode> generatePagePlans(ProjectEntity project, JsonNode outline, JsonNode pageResearch) {
+        List<JsonNode> pagePlans = new ArrayList<>();
+        int index = 0;
+        for (JsonNode pageResearchItem : pageResearch) {
+            ObjectNode node = objectMapper.createObjectNode();
+            node.put("pageId", pageResearchItem.path("pageId").asText(UUID.randomUUID().toString()));
+            node.put("title", pageResearchItem.path("title").asText("未命名页面"));
+            node.put("goal", pageResearchItem.path("findings").asText("解释当前页面的核心意图"));
+            node.put("layout", switch (index % 5) {
+                case 0 -> "hero";
+                case 1 -> "two-column";
+                case 2 -> "bento-grid";
+                case 3 -> "comparison";
+                default -> "summary";
+            });
+            node.put("visualTone", "clean");
+            node.put("speakerNotes", "围绕主题“" + project.getTopic() + "”展开。");
+
+            ArrayNode cards = node.putArray("cards");
+            cards.add(card("card-1", "highlight", node.path("title").asText("核心标题"), node.path("goal").asText("页面目标"), null, null, null));
+            cards.add(card("card-2", "text", "核心说明", "用一段正文承接这一页的关键内容。", null, null, null));
+
+            if (pageResearchItem.path("title").asText("").contains("对比")) {
+                cards.add(card("card-3", "comparison", "对比结构", "这一部分需要放对比块。", null, null, null));
+            } else if (pageResearchItem.path("title").asText("").contains("时间")) {
+                cards.add(card("card-3", "timeline", "时间线", "这一部分适合做时间线。", null, null, null));
+            } else if (index % 3 == 0) {
+                cards.add(card("card-3", "chart", "图表区域", "这里建议放一张图表来帮助理解。", "bar", null, null));
+            } else if (index % 3 == 1) {
+                cards.add(card("card-3", "table", "表格区域", "这里建议放一张表格来组织信息。", null, List.of("字段", "说明", "结论"), null));
+            } else {
+                cards.add(card("card-3", "image", "图片区域", "这里建议放一张说明性图片。", null, null, "表现主题的关键场景或对象"));
+            }
+
+            pagePlanSchemaService.validate(node);
+            pagePlans.add(node);
+            index++;
         }
         return pagePlans;
     }
@@ -214,6 +230,12 @@ public class WorkflowContentService {
             }
             svg.append(text(frame.x() + 24, frame.y() + 42, 24, true, ink, escapeXml(card.path("heading").asText("卡片"))));
             svg.append(multilineText(frame.x() + 24, frame.y() + 82, frame.w() - 48, 16, muted, card.path("body").asText("")));
+            if (card.hasNonNull("chartType")) {
+                svg.append(text(frame.x() + 24, frame.y() + frame.h() - 24, 14, false, accent, "图表：" + escapeXml(card.path("chartType").asText())));
+            }
+            if (card.path("kind").asText("").equals("image") && card.hasNonNull("imageIntent")) {
+                svg.append(text(frame.x() + 24, frame.y() + frame.h() - 24, 14, false, accent, "图片：" + escapeXml(card.path("imageIntent").asText())));
+            }
         }
 
         if (polished) {
@@ -313,26 +335,39 @@ public class WorkflowContentService {
         return lines.toArray(String[]::new);
     }
 
-    private boolean containsSelection(JsonNode discoveryAnswers, String value) {
-        for (JsonNode selected : discoveryAnswers.path("selectedOptionIds")) {
-            if (value.equals(selected.asText())) {
-                return true;
-            }
+    private List<ObjectNode> scenarioOptions(String topic) {
+        String normalized = topic == null ? "" : topic.toLowerCase();
+        if (normalized.contains("介绍") || normalized.contains("产品")) {
+            return List.of(
+                option("scene-presentation", "正式汇报", "用于管理层或客户介绍"),
+                option("scene-demo", "演示讲解", "用于现场讲解和展示"),
+                option("scene-training", "教学说明", "用于培训或教程说明")
+            );
         }
-        return false;
+
+        return List.of(
+            option("scene-share", "主题分享", "适合分享和介绍"),
+            option("scene-report", "结构汇报", "适合正式表达和汇报"),
+            option("scene-explain", "说明讲解", "适合一步步解释内容")
+        );
     }
 
-    private String inferAudience(JsonNode discoveryAnswers) {
-        if (containsSelection(discoveryAnswers, "management")) {
-            return "管理层";
+    private String selectedDiscoveryValue(JsonNode discoveryAnswers, String questionId) {
+        for (JsonNode selected : discoveryAnswers.path("selectedOptionIds")) {
+            String value = selected.asText();
+            if (value.startsWith(questionId)) {
+                return value;
+            }
         }
-        if (containsSelection(discoveryAnswers, "customer")) {
-            return "客户";
-        }
-        if (containsSelection(discoveryAnswers, "team")) {
-            return "内部团队";
-        }
-        return "待确认";
+        return "";
+    }
+
+    private ObjectNode source(String title, String url, String content) {
+        ObjectNode source = objectMapper.createObjectNode();
+        source.put("title", title);
+        source.put("url", url);
+        source.put("content", content);
+        return source;
     }
 
     private ObjectNode question(String id, String prompt, List<ObjectNode> options) {
@@ -352,12 +387,11 @@ public class WorkflowContentService {
         return option;
     }
 
-    private ObjectNode section(String id, String title, List<ObjectNode> pages) {
+    private ObjectNode section(String id, String title, ArrayNode pages) {
         ObjectNode section = objectMapper.createObjectNode();
         section.put("id", id);
         section.put("title", title);
-        ArrayNode pageArray = section.putArray("pages");
-        pages.forEach(pageArray::add);
+        section.set("pages", pages);
         return section;
     }
 
@@ -369,13 +403,31 @@ public class WorkflowContentService {
         return page;
     }
 
-    private ObjectNode card(String id, String kind, String heading, String body) {
+    private ObjectNode card(
+        String id,
+        String kind,
+        String heading,
+        String body,
+        String chartType,
+        List<String> tableHeaders,
+        String imageIntent
+    ) {
         ObjectNode card = objectMapper.createObjectNode();
         card.put("id", id);
         card.put("kind", kind);
         card.put("heading", heading);
         card.put("body", body);
         card.put("emphasis", "medium");
+        if (chartType != null) {
+            card.put("chartType", chartType);
+        }
+        if (tableHeaders != null && !tableHeaders.isEmpty()) {
+            ArrayNode headers = card.putArray("tableHeaders");
+            tableHeaders.forEach(headers::add);
+        }
+        if (imageIntent != null) {
+            card.put("imageIntent", imageIntent);
+        }
         return card;
     }
 

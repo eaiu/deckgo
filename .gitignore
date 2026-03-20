@@ -1,6 +1,9 @@
 # Project temp files
 .codex-temp/
 docs/
+.codex/
+.claude/
+CLAUDE.md
 
 # OS files
 .DS_Store

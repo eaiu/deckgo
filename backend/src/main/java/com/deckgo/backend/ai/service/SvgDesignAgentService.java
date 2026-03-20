@@ -63,7 +63,7 @@ public class SvgDesignAgentService extends AbstractWorkflowAgentService {
         this.templateCatalogService = templateCatalogService;
     }
 
-    public String generateFinalSvg(JsonNode pagePlan, String templateId) {
+    public String generateFinalSvg(JsonNode pagePlan, JsonNode pageResearch, String templateId) {
         return useAgentOrFallback(
             "SvgDesignAgent",
             properties.getAi().getWorkflow().getSvgDesign(),
@@ -74,11 +74,14 @@ public class SvgDesignAgentService extends AbstractWorkflowAgentService {
                         页面策划稿：
                         %s
 
+                        当前页 research：
+                        %s
+
                         模板样式 token：
                         %s
 
                         请输出最终 SVG。
-                        """.formatted(asJson(pagePlan), asJson(templateCatalogService.getTemplate(templateId))))
+                        """.formatted(asJson(pagePlan), asJson(pageResearch), asJson(templateCatalogService.getTemplate(templateId))))
                     .tools(templateCatalogTools)
                     .call()
                     .content();

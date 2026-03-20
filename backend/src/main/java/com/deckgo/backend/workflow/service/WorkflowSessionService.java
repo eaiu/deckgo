@@ -5,6 +5,7 @@ import com.deckgo.backend.ai.service.OutlineAgentService;
 import com.deckgo.backend.ai.service.PagePlanAgentService;
 import com.deckgo.backend.ai.service.ResearchAgentService;
 import com.deckgo.backend.ai.service.SvgDesignAgentService;
+import com.deckgo.backend.ai.service.TavilySearchService;
 import com.deckgo.backend.common.exception.NotFoundException;
 import com.deckgo.backend.common.exception.ValidationException;
 import com.deckgo.backend.project.entity.ProjectEntity;
@@ -33,6 +34,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +47,7 @@ public class WorkflowSessionService {
     private final WorkflowVersionRepository workflowVersionRepository;
     private final WorkflowPageRepository workflowPageRepository;
     private final WorkflowContentService workflowContentService;
+    private final TavilySearchService tavilySearchService;
     private final DiscoveryAgentService discoveryAgentService;
     private final ResearchAgentService researchAgentService;
     private final OutlineAgentService outlineAgentService;
@@ -59,6 +62,7 @@ public class WorkflowSessionService {
         WorkflowVersionRepository workflowVersionRepository,
         WorkflowPageRepository workflowPageRepository,
         WorkflowContentService workflowContentService,
+        TavilySearchService tavilySearchService,
         DiscoveryAgentService discoveryAgentService,
         ResearchAgentService researchAgentService,
         OutlineAgentService outlineAgentService,
@@ -72,6 +76,7 @@ public class WorkflowSessionService {
         this.workflowVersionRepository = workflowVersionRepository;
         this.workflowPageRepository = workflowPageRepository;
         this.workflowContentService = workflowContentService;
+        this.tavilySearchService = tavilySearchService;
         this.discoveryAgentService = discoveryAgentService;
         this.researchAgentService = researchAgentService;
         this.outlineAgentService = outlineAgentService;
@@ -92,17 +97,21 @@ public class WorkflowSessionService {
             templateId
         );
 
+        JsonNode backgroundSummary = tavilySearchService.collectBackgroundSummary(prompt)
+            .orElseGet(() -> workflowContentService.generateBackgroundSummary(project));
+
         WorkflowSessionEntity session = new WorkflowSessionEntity();
         session.setId(UUID.randomUUID());
         session.setProjectId(project.getId());
         session.setStatus(WorkflowSessionStatus.WAITING_USER);
         session.setCurrentStage(WorkflowStage.DISCOVERY);
         session.setSelectedTemplateId(templateId);
-        session.setDiscoveryJson(discoveryAgentService.generateDiscoveryCard(project));
+        session.setBackgroundJson(backgroundSummary);
+        session.setDiscoveryJson(discoveryAgentService.generateDiscoveryCard(project, backgroundSummary));
         workflowSessionRepository.save(session);
 
         appendMessage(session.getId(), WorkflowMessageRole.USER, WorkflowStage.DISCOVERY, textContent(prompt));
-        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.DISCOVERY, textContent("我先补齐几个关键问题，再继续推进这份 PPT。"));
+        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.DISCOVERY, textContent("我先查了一下背景信息，并基于它生成了几个需要你确认的问题。"));
         return toResponse(session, project);
     }
 
@@ -121,10 +130,10 @@ public class WorkflowSessionService {
         try {
             switch (request.command()) {
                 case SUBMIT_DISCOVERY -> handleSubmitDiscovery(session, project, request);
-                case CONTINUE_TO_OUTLINE -> handleContinueToOutline(session, project);
                 case APPLY_OUTLINE_FEEDBACK -> handleApplyOutlineFeedback(session, project, request);
-                case CONTINUE_TO_PAGE_PLAN -> handleContinueToPagePlan(session, project);
-                case CONTINUE_TO_FINAL_DESIGN -> handleContinueToFinalDesign(session, project);
+                case CONTINUE_TO_RESEARCH -> handleContinueToResearch(session, project);
+                case CONTINUE_TO_PLANNING -> handleContinueToPlanning(session, project);
+                case CONTINUE_TO_DESIGN -> handleContinueToDesign(session, project);
                 default -> throw new ValidationException("不支持的 command", List.of(request.command().name()));
             }
             session.setLastError(null);
@@ -159,27 +168,11 @@ public class WorkflowSessionService {
         JsonNode answers = buildDiscoveryAnswers(request);
         appendMessage(session.getId(), WorkflowMessageRole.USER, WorkflowStage.DISCOVERY, answers);
 
-        JsonNode research = researchAgentService.generateResearchSummary(project, answers);
-        String audience = research.path("audience").asText(project.getAudience());
-        String titleSuggestion = research.path("titleSuggestion").asText(project.getTitle());
-        String templateId = research.path("suggestedTemplateId").asText(session.getSelectedTemplateId());
-
-        project.setAudience(audience);
-        project.setTitle(titleSuggestion);
-        project.setTemplateId(templateId);
-
-        session.setSelectedTemplateId(templateId);
-        session.setResearchJson(research);
-        session.setCurrentStage(WorkflowStage.RESEARCH);
-        session.setStatus(WorkflowSessionStatus.WAITING_USER);
-
-        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.RESEARCH, textContent("我已经整理出当前阶段的资料摘要，你可以先看一眼，再继续生成大纲。"));
-    }
-
-    private void handleContinueToOutline(WorkflowSessionEntity session, ProjectEntity project) {
-        ensureStage(session, WorkflowStage.RESEARCH, WorkflowCommandType.CONTINUE_TO_OUTLINE);
-        JsonNode outline = outlineAgentService.generateOutline(project, session.getResearchJson());
+        session.setDiscoveryAnswersJson(answers);
+        JsonNode outline = outlineAgentService.generateOutline(project, session.getBackgroundJson(), answers);
         session.setOutlineJson(outline);
+        session.setPageResearchJson(null);
+        session.setCurrentVersionId(null);
         session.setCurrentStage(WorkflowStage.OUTLINE);
         session.setStatus(WorkflowSessionStatus.WAITING_USER);
 
@@ -187,7 +180,7 @@ public class WorkflowSessionService {
             project.setTitle(outline.path("title").asText(project.getTitle()));
         }
 
-        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.OUTLINE, textContent("大纲已经生成好了。你可以查看详情、提出修改意见，然后再继续生成页面策划稿。"));
+        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.OUTLINE, textContent("大纲已经生成好了。你可以先检查结构，再继续进入按页资料搜集阶段。"));
     }
 
     private void handleApplyOutlineFeedback(WorkflowSessionEntity session, ProjectEntity project, WorkflowCommandRequest request) {
@@ -200,26 +193,52 @@ public class WorkflowSessionService {
         appendMessage(session.getId(), WorkflowMessageRole.USER, WorkflowStage.OUTLINE, textContent(feedback));
         JsonNode revisedOutline = outlineAgentService.reviseOutline(
             project,
-            session.getResearchJson(),
+            session.getBackgroundJson(),
+            session.getDiscoveryAnswersJson(),
             session.getOutlineJson(),
             feedback
         );
         session.setOutlineJson(revisedOutline);
+        session.setPageResearchJson(null);
         session.setCurrentVersionId(null);
 
-        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.OUTLINE, textContent("我已经根据你的要求更新了大纲。确认后就可以继续生成页面策划稿。"));
+        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.OUTLINE, textContent("我已经根据你的要求更新了大纲。确认后就可以继续进行逐页资料搜集。"));
     }
 
-    private void handleContinueToPagePlan(WorkflowSessionEntity session, ProjectEntity project) {
-        ensureStage(session, WorkflowStage.OUTLINE, WorkflowCommandType.CONTINUE_TO_PAGE_PLAN);
-        List<JsonNode> pagePlans = pagePlanAgentService.generatePagePlans(project, session.getOutlineJson(), session.getSelectedTemplateId());
+    private void handleContinueToResearch(WorkflowSessionEntity session, ProjectEntity project) {
+        ensureStage(session, WorkflowStage.OUTLINE, WorkflowCommandType.CONTINUE_TO_RESEARCH);
+        JsonNode pageResearch = researchAgentService.generatePageResearch(
+            project,
+            session.getBackgroundJson(),
+            session.getDiscoveryAnswersJson(),
+            session.getOutlineJson()
+        );
 
-        WorkflowVersionEntity draftVersion = createVersion(
+        session.setPageResearchJson(pageResearch);
+        session.setCurrentStage(WorkflowStage.RESEARCH);
+        session.setStatus(WorkflowSessionStatus.WAITING_USER);
+
+        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.RESEARCH, textContent("逐页资料搜集已经完成。现在每一页都绑定了研究结果，可以继续进入策划阶段。"));
+    }
+
+    private void handleContinueToPlanning(WorkflowSessionEntity session, ProjectEntity project) {
+        ensureStage(session, WorkflowStage.RESEARCH, WorkflowCommandType.CONTINUE_TO_PLANNING);
+        List<JsonNode> pagePlans = pagePlanAgentService.generatePagePlans(
+            project,
+            session.getBackgroundJson(),
+            session.getDiscoveryAnswersJson(),
+            session.getOutlineJson(),
+            session.getPageResearchJson(),
+            session.getSelectedTemplateId()
+        );
+
+        WorkflowVersionEntity planningVersion = createVersion(
             project.getId(),
             session.getSelectedTemplateId(),
-            session.getResearchJson(),
+            session.getBackgroundJson(),
+            session.getPageResearchJson(),
             session.getOutlineJson(),
-            WorkflowVersionSource.DRAFT,
+            WorkflowVersionSource.PLANNING,
             "自动生成页面策划稿"
         );
 
@@ -227,7 +246,7 @@ public class WorkflowSessionService {
         for (JsonNode pagePlan : pagePlans) {
             WorkflowPageEntity page = new WorkflowPageEntity();
             page.setId(UUID.randomUUID());
-            page.setWorkflowVersionId(draftVersion.getId());
+            page.setWorkflowVersionId(planningVersion.getId());
             page.setOrderIndex(index);
             page.setTitle(pagePlan.path("title").asText("未命名页面"));
             page.setPagePlanJson(pagePlan);
@@ -236,56 +255,74 @@ public class WorkflowSessionService {
             index++;
         }
 
-        session.setCurrentVersionId(draftVersion.getId());
-        session.setCurrentStage(WorkflowStage.DRAFT);
+        session.setCurrentVersionId(planningVersion.getId());
+        session.setCurrentStage(WorkflowStage.PLANNING);
         session.setStatus(WorkflowSessionStatus.WAITING_USER);
 
-        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.DRAFT, textContent("页面策划稿和低保真草稿已经生成，你可以先预览整体结构，再继续生成最终设计稿。"));
+        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.PLANNING, textContent("页面策划已经生成，当前每一页都包含布局框架和素材类型需求。"));
     }
 
-    private void handleContinueToFinalDesign(WorkflowSessionEntity session, ProjectEntity project) {
-        ensureStage(session, WorkflowStage.DRAFT, WorkflowCommandType.CONTINUE_TO_FINAL_DESIGN);
+    private void handleContinueToDesign(WorkflowSessionEntity session, ProjectEntity project) {
+        ensureStage(session, WorkflowStage.PLANNING, WorkflowCommandType.CONTINUE_TO_DESIGN);
         if (session.getCurrentVersionId() == null) {
-            throw new NotFoundException("当前会话还没有可用的草稿版本");
+            throw new NotFoundException("当前会话还没有可用的策划版本");
         }
 
-        List<WorkflowPageEntity> draftPages = workflowPageRepository.findByWorkflowVersionIdOrderByOrderIndexAsc(session.getCurrentVersionId());
-        if (draftPages.isEmpty()) {
-            throw new NotFoundException("当前草稿版本没有页面数据");
+        List<WorkflowPageEntity> planningPages = workflowPageRepository.findByWorkflowVersionIdOrderByOrderIndexAsc(session.getCurrentVersionId());
+        if (planningPages.isEmpty()) {
+            throw new NotFoundException("当前策划版本没有页面数据");
         }
 
-        WorkflowVersionEntity finalVersion = createVersion(
+        WorkflowVersionEntity designVersion = createVersion(
             project.getId(),
             session.getSelectedTemplateId(),
-            session.getResearchJson(),
+            session.getBackgroundJson(),
+            session.getPageResearchJson(),
             session.getOutlineJson(),
-            WorkflowVersionSource.FINAL,
+            WorkflowVersionSource.DESIGN,
             "生成最终 SVG 设计稿"
         );
 
-        for (WorkflowPageEntity draftPage : draftPages) {
+        for (WorkflowPageEntity planningPage : planningPages) {
             WorkflowPageEntity page = new WorkflowPageEntity();
             page.setId(UUID.randomUUID());
-            page.setWorkflowVersionId(finalVersion.getId());
-            page.setOrderIndex(draftPage.getOrderIndex());
-            page.setTitle(draftPage.getTitle());
-            page.setPagePlanJson(draftPage.getPagePlanJson());
-            page.setDraftSvg(draftPage.getDraftSvg());
-            page.setFinalSvg(svgDesignAgentService.generateFinalSvg(draftPage.getPagePlanJson(), session.getSelectedTemplateId()));
+            page.setWorkflowVersionId(designVersion.getId());
+            page.setOrderIndex(planningPage.getOrderIndex());
+            page.setTitle(planningPage.getTitle());
+            page.setPagePlanJson(planningPage.getPagePlanJson());
+            page.setDraftSvg(planningPage.getDraftSvg());
+            page.setFinalSvg(svgDesignAgentService.generateFinalSvg(
+                planningPage.getPagePlanJson(),
+                findPageResearch(planningPage.getPagePlanJson().path("pageId").asText(""), session.getPageResearchJson()),
+                session.getSelectedTemplateId()
+            ));
             workflowPageRepository.save(page);
         }
 
-        session.setCurrentVersionId(finalVersion.getId());
-        session.setCurrentStage(WorkflowStage.FINAL);
+        session.setCurrentVersionId(designVersion.getId());
+        session.setCurrentStage(WorkflowStage.DESIGN);
         session.setStatus(WorkflowSessionStatus.COMPLETED);
 
-        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.FINAL, textContent("最终 SVG 页面集已经生成完成，现在可以逐页浏览这份演示稿。"));
+        appendMessage(session.getId(), WorkflowMessageRole.ASSISTANT, WorkflowStage.DESIGN, textContent("最终 SVG 页面集已经生成完成，现在可以逐页查看最终设计稿。"));
+    }
+
+    private JsonNode findPageResearch(String pageId, JsonNode pageResearch) {
+        if (pageResearch == null || !pageResearch.isArray()) {
+            return objectMapper.createObjectNode();
+        }
+        for (JsonNode item : pageResearch) {
+            if (pageId.equals(item.path("pageId").asText())) {
+                return item;
+            }
+        }
+        return objectMapper.createObjectNode();
     }
 
     private WorkflowVersionEntity createVersion(
         UUID projectId,
         String templateId,
-        JsonNode researchJson,
+        JsonNode backgroundJson,
+        JsonNode pageResearchJson,
         JsonNode outlineJson,
         WorkflowVersionSource source,
         String note
@@ -301,7 +338,8 @@ public class WorkflowSessionService {
         version.setSource(source);
         version.setNote(note);
         version.setTemplateId(templateId);
-        version.setResearchJson(researchJson);
+        version.setBackgroundJson(backgroundJson);
+        version.setPageResearchJson(pageResearchJson);
         version.setOutlineJson(outlineJson);
         return workflowVersionRepository.save(version);
     }
@@ -382,9 +420,11 @@ public class WorkflowSessionService {
                 project.getTemplateId()
             ),
             messages,
+            session.getBackgroundJson(),
             session.getDiscoveryJson(),
-            session.getResearchJson(),
+            session.getDiscoveryAnswersJson(),
             session.getOutlineJson(),
+            session.getPageResearchJson(),
             pages,
             session.getUpdatedAt()
         );

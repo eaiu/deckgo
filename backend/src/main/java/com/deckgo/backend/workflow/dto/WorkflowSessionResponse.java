@@ -16,9 +16,11 @@ public record WorkflowSessionResponse(
     String lastError,
     WorkflowProjectResponse project,
     List<WorkflowMessageResponse> messages,
+    JsonNode backgroundSummary,
     JsonNode discoveryCard,
-    JsonNode researchSummary,
+    JsonNode discoveryAnswers,
     JsonNode outline,
+    JsonNode pageResearch,
     List<WorkflowPageResponse> pages,
     OffsetDateTime updatedAt
 ) {

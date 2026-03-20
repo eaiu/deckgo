@@ -5,76 +5,145 @@ import com.deckgo.backend.project.entity.ProjectEntity;
 import com.deckgo.backend.workflow.service.WorkflowContentService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ResearchAgentService extends AbstractWorkflowAgentService {
 
     private static final String SYSTEM_PROMPT = """
-        你是 DeckGo 的资料整理助手。
-        你当前不能访问外部搜索，只能根据用户主题和调研回答做高质量整理。
-        请沿用“资料搜集先服务大纲”的思路，把当前已知信息整理成能直接供大纲使用的 research summary。
-        不要编造引用或虚构来源，不要假装已经做过外部搜索。
-        必须给出：audience、summary、assumptions、comparisonPoints、keyFindings、suggestedTemplateId、titleSuggestion。
-        suggestedTemplateId 只能从 clarity-blue、paper-grid、studio-dark 中选择一个。
-        结果要简洁、可信、可执行，不要输出 Markdown，只返回结构化结果。
+        你是 DeckGo 的逐页资料搜集助手。
+        当前大纲已经确定，你的任务是判断每一页是否需要调用搜索，并为需要搜索的页面生成检索计划。
+
+        你必须输出 pages[]，每一页都包含：
+        - pageId
+        - title
+        - needsSearch
+        - searchIntent
+        - queries[]
+        - searchDepth
+
+        要求：
+        - 如果页面是封面、目录、纯总结页，可以不搜索
+        - 如果页面需要事实、案例、定义、历史、市场、技术细节，就应该搜索
+        - queries 最多 3 个
+        - searchDepth 只能是 basic 或 advanced
+        - 不要压缩为一句总摘要，要保留对后续策划有价值的研究上下文
+        - 不要输出 Markdown，不要解释
         """;
 
     private final WorkflowContentService workflowContentService;
+    private final TavilySearchService tavilySearchService;
 
     public ResearchAgentService(
         WorkflowAgentClientFactory workflowAgentClientFactory,
         DeckGoProperties properties,
         ObjectMapper objectMapper,
-        WorkflowContentService workflowContentService
+        WorkflowContentService workflowContentService,
+        TavilySearchService tavilySearchService
     ) {
         super(workflowAgentClientFactory, properties, objectMapper);
         this.workflowContentService = workflowContentService;
+        this.tavilySearchService = tavilySearchService;
     }
 
-    public JsonNode generateResearchSummary(ProjectEntity project, JsonNode discoveryAnswers) {
+    public JsonNode generatePageResearch(
+        ProjectEntity project,
+        JsonNode backgroundSummary,
+        JsonNode discoveryAnswers,
+        JsonNode outline
+    ) {
         return useAgentOrFallback(
             "ResearchAgent",
             properties.getAi().getWorkflow().getResearch(),
             chatClient -> {
-                ResearchSummary summary = chatClient.prompt()
+                PageResearchPlanDocument plan = chatClient.prompt()
                     .system(SYSTEM_PROMPT)
                     .user("""
                         主题：
                         %s
 
+                        背景信息：
+                        %s
+
                         discovery 回答：
                         %s
 
-                        请整理成 research summary。
-                        """.formatted(project.getTopic(), asJson(discoveryAnswers)))
+                        outline：
+                        %s
+
+                        请输出逐页 research plan。
+                        """.formatted(project.getTopic(), asJson(backgroundSummary), asJson(discoveryAnswers), asJson(outline)))
                     .call()
-                    .entity(ResearchSummary.class);
+                    .entity(PageResearchPlanDocument.class);
 
-                if (summary == null || summary.summary() == null || summary.summary().isBlank()) {
-                    throw new IllegalStateException("research summary 为空");
+                if (plan == null || plan.pages() == null || plan.pages().isEmpty()) {
+                    throw new IllegalStateException("page research plan 为空");
                 }
 
-                String templateId = summary.suggestedTemplateId();
-                if (!List.of("clarity-blue", "paper-grid", "studio-dark").contains(templateId)) {
-                    throw new IllegalStateException("research 建议模板不合法: " + templateId);
-                }
-
-                return objectMapper.valueToTree(summary);
+                return enrichWithSearch(plan.pages());
             },
-            () -> workflowContentService.generateResearchSummary(project, discoveryAnswers)
+            () -> workflowContentService.generatePageResearch(project, outline)
         );
     }
 
-    private record ResearchSummary(
-        String audience,
-        String summary,
-        String suggestedTemplateId,
-        String titleSuggestion,
-        List<String> assumptions,
-        List<String> comparisonPoints,
-        List<String> keyFindings
+    private JsonNode enrichWithSearch(List<PageResearchPlanItem> pages) {
+        ArrayNode enriched = objectMapper.createArrayNode();
+
+        for (PageResearchPlanItem page : pages) {
+            ObjectNode item = objectMapper.createObjectNode();
+            item.put("pageId", page.pageId());
+            item.put("title", page.title());
+            item.put("needsSearch", page.needsSearch());
+            item.put("searchIntent", page.searchIntent());
+            item.put("searchDepth", page.searchDepth() == null || page.searchDepth().isBlank() ? "basic" : page.searchDepth());
+
+            ArrayNode queries = item.putArray("queries");
+            List<String> searchQueries = page.queries() == null ? List.of() : page.queries().stream().filter(query -> query != null && !query.isBlank()).limit(3).toList();
+            searchQueries.forEach(queries::add);
+
+            ArrayNode sources = item.putArray("sources");
+            StringBuilder findings = new StringBuilder();
+
+            if (page.needsSearch() && !searchQueries.isEmpty()) {
+                for (String query : searchQueries) {
+                    Optional<JsonNode> searchResult = tavilySearchService.collectPageResearch(query, item.path("searchDepth").asText());
+                    if (searchResult.isPresent()) {
+                        JsonNode result = searchResult.get();
+                        if (!result.path("answer").asText("").isBlank()) {
+                            if (!findings.isEmpty()) {
+                                findings.append(" ");
+                            }
+                            findings.append(result.path("answer").asText(""));
+                        }
+                        for (JsonNode source : result.path("sources")) {
+                            sources.add(source);
+                        }
+                    }
+                }
+            }
+
+            item.put("findings", findings.toString().isBlank() ? "当前页暂无外部搜索摘要，后续以原始 sources 为主要参考。" : findings.toString());
+            enriched.add(item);
+        }
+
+        return enriched;
+    }
+
+    private record PageResearchPlanDocument(List<PageResearchPlanItem> pages) {
+    }
+
+    private record PageResearchPlanItem(
+        String pageId,
+        String title,
+        boolean needsSearch,
+        String searchIntent,
+        List<String> queries,
+        String searchDepth
     ) {
     }
 }

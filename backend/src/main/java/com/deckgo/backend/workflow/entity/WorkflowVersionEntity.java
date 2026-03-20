@@ -46,8 +46,12 @@ public class WorkflowVersionEntity implements Persistable<UUID> {
     private String templateId;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "background_json", columnDefinition = "jsonb")
+    private JsonNode backgroundJson;
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "research_json", columnDefinition = "jsonb")
-    private JsonNode researchJson;
+    private JsonNode pageResearchJson;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "outline_json", columnDefinition = "jsonb")
@@ -121,12 +125,20 @@ public class WorkflowVersionEntity implements Persistable<UUID> {
         this.templateId = templateId;
     }
 
-    public JsonNode getResearchJson() {
-        return researchJson;
+    public JsonNode getBackgroundJson() {
+        return backgroundJson;
     }
 
-    public void setResearchJson(JsonNode researchJson) {
-        this.researchJson = researchJson;
+    public void setBackgroundJson(JsonNode backgroundJson) {
+        this.backgroundJson = backgroundJson;
+    }
+
+    public JsonNode getPageResearchJson() {
+        return pageResearchJson;
+    }
+
+    public void setPageResearchJson(JsonNode pageResearchJson) {
+        this.pageResearchJson = pageResearchJson;
     }
 
     public JsonNode getOutlineJson() {

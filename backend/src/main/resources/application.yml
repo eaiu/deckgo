@@ -41,6 +41,13 @@ deckgo:
     allowed-origins: ${DECKGO_CORS_ALLOWED_ORIGINS:http://localhost:5173}
   ai:
     fallback-enabled: ${DECKGO_AI_FALLBACK_ENABLED:true}
+    tavily:
+      enabled: ${DECKGO_AI_TAVILY_ENABLED:true}
+      api-key: ${DECKGO_AI_TAVILY_API_KEY:}
+      base-url: ${DECKGO_AI_TAVILY_BASE_URL:https://api.tavily.com}
+      search-depth: ${DECKGO_AI_TAVILY_SEARCH_DEPTH:basic}
+      max-results: ${DECKGO_AI_TAVILY_MAX_RESULTS:20}
+      topic: ${DECKGO_AI_TAVILY_TOPIC:general}
     workflow:
       discovery:
         enabled: ${DECKGO_AI_WORKFLOW_DISCOVERY_ENABLED:true}
