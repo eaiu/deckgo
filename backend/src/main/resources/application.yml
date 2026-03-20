@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: deckgo-backend
+  datasource:
+    url: ${DECKGO_DB_URL:jdbc:postgresql://localhost:5432/deckgo}
+    username: ${DECKGO_DB_USERNAME:postgres}
+    password: ${DECKGO_DB_PASSWORD:postgres}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        format_sql: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  ai:
+    openai:
+      api-key: ${SPRING_AI_OPENAI_API_KEY:demo-key}
+      base-url: ${SPRING_AI_OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${SPRING_AI_OPENAI_CHAT_OPTIONS_MODEL:gpt-5-mini}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+deckgo:
+  contracts-dir: ${DECKGO_CONTRACTS_DIR:../contracts}
+  renderer-base-url: ${DECKGO_RENDERER_BASE_URL:http://localhost:4301}
+  artifacts-dir: ${DECKGO_ARTIFACTS_DIR:../var/artifacts}
+  render-worker-delay-ms: ${DECKGO_RENDER_WORKER_DELAY_MS:5000}
+  cors:
+    allowed-origins: ${DECKGO_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  ai:
+    fallback-enabled: ${DECKGO_AI_FALLBACK_ENABLED:true}

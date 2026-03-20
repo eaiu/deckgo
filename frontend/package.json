@@ -1,0 +1,16 @@
+{
+  "name": "@deckgo/frontend-workspace",
+  "private": true,
+  "workspaces": [
+    "web",
+    "renderer",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace web run dev",
+    "dev:renderer": "npm --workspace renderer run dev",
+    "build:web": "npm --workspace web run build",
+    "build:renderer": "npm --workspace renderer run build",
+    "build:packages": "npm --workspace @deckgo/deck-core run build && npm --workspace @deckgo/template-kit run build"
+  }
+}

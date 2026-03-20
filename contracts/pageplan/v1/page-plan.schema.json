@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deckgo.local/contracts/pageplan/v1/page-plan.schema.json",
+  "title": "DeckGo PagePlan",
+  "type": "object",
+  "required": [
+    "pageId",
+    "title",
+    "goal",
+    "layout",
+    "cards"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "pageId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "layout": {
+      "type": "string",
+      "enum": [
+        "hero",
+        "two-column",
+        "three-column",
+        "comparison",
+        "timeline",
+        "bento-grid",
+        "summary"
+      ]
+    },
+    "visualTone": {
+      "type": "string"
+    },
+    "speakerNotes": {
+      "type": "string"
+    },
+    "cards": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "heading",
+          "body"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "metric",
+              "comparison",
+              "timeline",
+              "quote",
+              "image",
+              "highlight"
+            ]
+          },
+          "heading": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
+          "supportingPoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "emphasis": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
