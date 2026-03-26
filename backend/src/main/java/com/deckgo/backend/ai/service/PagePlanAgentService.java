@@ -99,53 +99,153 @@ public class PagePlanAgentService extends AbstractWorkflowAgentService {
             "PagePlanAgent",
             properties.getAi().getWorkflow().getPagePlan(),
             chatClient -> {
+                // Collect all pages from outline sections
+                List<JsonNode> outlinePages = new ArrayList<>();
+                if (outline.has("sections")) {
+                    for (JsonNode section : outline.path("sections")) {
+                        for (JsonNode page : section.path("pages")) {
+                            outlinePages.add(page);
+                        }
+                    }
+                }
+
+                String templateJson = asJson(templateCatalogService.getTemplate(templateId));
+                List<JsonNode> pagePlans = new ArrayList<>();
+
+                for (JsonNode outlinePage : outlinePages) {
+                    String pageId = outlinePage.path("id").asText("");
+                    JsonNode pageResearchItem = findPageResearch(pageId, pageResearch);
+
+                    PagePlanDocument document = chatClient.prompt()
+                        .system(SYSTEM_PROMPT)
+                        .user("""
+                            主题：%s
+
+                            演示文稿标题：%s
+
+                            背景信息摘要：%s
+
+                            当前页大纲：
+                            %s
+
+                            当前页研究资料：
+                            %s
+
+                            当前模板：%s
+
+                            请只输出这一页的 PagePlan（pages 数组中仅包含 1 个元素）。
+                            """.formatted(
+                            project.getTopic(),
+                            outline.path("title").asText(""),
+                            summarizeBackground(backgroundSummary),
+                            asJson(outlinePage),
+                            asJson(pageResearchItem),
+                            templateJson
+                        ))
+                        .tools(templateCatalogTools)
+                        .call()
+                        .entity(PagePlanDocument.class);
+
+                    if (document != null && document.pages() != null) {
+                        for (PagePlanRecord page : document.pages()) {
+                            JsonNode pageNode = objectMapper.valueToTree(page);
+                            pagePlanSchemaService.validate(pageNode);
+                            pagePlans.add(pageNode);
+                        }
+                    }
+                }
+
+                if (pagePlans.isEmpty()) {
+                    throw new IllegalStateException("page plan 输出为空");
+                }
+                return pagePlans;
+            },
+            () -> workflowContentService.generatePagePlans(project, outline, pageResearch)
+        );
+    }
+
+    private JsonNode findPageResearch(String pageId, JsonNode pageResearch) {
+        if (pageResearch == null || !pageResearch.isArray()) {
+            return objectMapper.createObjectNode();
+        }
+        for (JsonNode item : pageResearch) {
+            if (pageId.equals(item.path("pageId").asText())) {
+                return item;
+            }
+        }
+        return objectMapper.createObjectNode();
+    }
+
+    private String summarizeBackground(JsonNode backgroundSummary) {
+        if (backgroundSummary == null) return "无";
+        String answer = backgroundSummary.path("answer").asText("");
+        if (!answer.isBlank()) return answer.length() > 500 ? answer.substring(0, 500) + "..." : answer;
+        String summary = backgroundSummary.path("summary").asText("");
+        if (!summary.isBlank()) return summary.length() > 500 ? summary.substring(0, 500) + "..." : summary;
+        return "无";
+    }
+
+    /**
+     * Generate a PagePlan for a single page.
+     */
+    public JsonNode generateSinglePagePlan(
+        ProjectEntity project,
+        JsonNode backgroundSummary,
+        JsonNode outlinePage,
+        JsonNode pageResearchItem,
+        String outlineTitle,
+        String templateId
+    ) {
+        return useAgentOrFallback(
+            "PagePlanAgent",
+            properties.getAi().getWorkflow().getPagePlan(),
+            chatClient -> {
+                String templateJson = asJson(templateCatalogService.getTemplate(templateId));
+
                 PagePlanDocument document = chatClient.prompt()
                     .system(SYSTEM_PROMPT)
                     .user("""
-                        主题：
+                        主题：%s
+
+                        演示文稿标题：%s
+
+                        背景信息摘要：%s
+
+                        当前页大纲：
                         %s
 
-                        背景信息：
+                        当前页研究资料：
                         %s
 
-                        discovery 回答：
-                        %s
+                        当前模板：%s
 
-                        outline：
-                        %s
-
-                        逐页 research：
-                        %s
-
-                        当前模板：
-                        %s
-
-                        请输出全部页面的 PagePlan。
+                        请只输出这一页的 PagePlan（pages 数组中仅包含 1 个元素）。
                         """.formatted(
                         project.getTopic(),
-                        asJson(backgroundSummary),
-                        asJson(discoveryAnswers),
-                        asJson(outline),
-                        asJson(pageResearch),
-                        asJson(templateCatalogService.getTemplate(templateId))
+                        outlineTitle,
+                        summarizeBackground(backgroundSummary),
+                        asJson(outlinePage),
+                        asJson(pageResearchItem),
+                        templateJson
                     ))
                     .tools(templateCatalogTools)
                     .call()
                     .entity(PagePlanDocument.class);
 
                 if (document == null || document.pages() == null || document.pages().isEmpty()) {
-                    throw new IllegalStateException("page plan 输出为空");
+                    throw new IllegalStateException("single page plan 输出为空");
                 }
 
-                List<JsonNode> pagePlans = new ArrayList<>();
-                for (PagePlanRecord page : document.pages()) {
-                    JsonNode pageNode = objectMapper.valueToTree(page);
-                    pagePlanSchemaService.validate(pageNode);
-                    pagePlans.add(pageNode);
-                }
-                return pagePlans;
+                JsonNode pageNode = objectMapper.valueToTree(document.pages().get(0));
+                pagePlanSchemaService.validate(pageNode);
+                return pageNode;
             },
-            () -> workflowContentService.generatePagePlans(project, outline, pageResearch)
+            () -> {
+                // Fallback: create a minimal page plan
+                var fallbackPlans = workflowContentService.generatePagePlans(project,
+                    objectMapper.createObjectNode(), objectMapper.createArrayNode());
+                return fallbackPlans.isEmpty() ? objectMapper.createObjectNode() : fallbackPlans.get(0);
+            }
         );
     }
 

@@ -1,5 +1,6 @@
 package com.deckgo.backend.workflow.entity;
 
+import com.deckgo.backend.common.JsonSanitizer;
 import com.deckgo.backend.workflow.enums.WorkflowMessageRole;
 import com.deckgo.backend.workflow.enums.WorkflowStage;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -45,12 +46,21 @@ public class WorkflowMessageEntity implements Persistable<UUID> {
     @Column(name = "content_json", nullable = false, columnDefinition = "jsonb")
     private JsonNode contentJson;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "tool_calls_json", columnDefinition = "jsonb")
+    private JsonNode toolCallsJson;
+
+    @Column(name = "message_type", nullable = false)
+    private String messageType = "COMMAND";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
     @PrePersist
     public void onCreate() {
         this.createdAt = OffsetDateTime.now(ZoneOffset.UTC);
+        this.contentJson = JsonSanitizer.sanitize(this.contentJson);
+        this.toolCallsJson = JsonSanitizer.sanitize(this.toolCallsJson);
     }
 
     @PostPersist
@@ -103,6 +113,22 @@ public class WorkflowMessageEntity implements Persistable<UUID> {
 
     public void setContentJson(JsonNode contentJson) {
         this.contentJson = contentJson;
+    }
+
+    public JsonNode getToolCallsJson() {
+        return toolCallsJson;
+    }
+
+    public void setToolCallsJson(JsonNode toolCallsJson) {
+        this.toolCallsJson = toolCallsJson;
+    }
+
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public void setMessageType(String messageType) {
+        this.messageType = messageType;
     }
 
     public OffsetDateTime getCreatedAt() {

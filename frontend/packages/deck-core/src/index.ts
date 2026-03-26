@@ -111,7 +111,7 @@ export interface TemplateSummary {
 }
 
 export type WorkflowStage = "DISCOVERY" | "OUTLINE" | "RESEARCH" | "PLANNING" | "DESIGN";
-export type WorkflowSessionStatus = "WAITING_USER" | "COMPLETED" | "FAILED";
+export type WorkflowSessionStatus = "WAITING_USER" | "PROCESSING" | "COMPLETED" | "FAILED";
 export type WorkflowMessageRole = "USER" | "ASSISTANT" | "SYSTEM";
 export type WorkflowCommandType =
   | "SUBMIT_DISCOVERY"
@@ -229,6 +229,29 @@ export interface PageResearchItem {
 
 export type PageResearch = PageResearchItem[];
 
+export interface ToolSubStep {
+  label: string;
+  status: "completed" | "in_progress" | "pending";
+}
+
+export interface ToolCallStep {
+  id: string;
+  toolName: string;
+  displayName: string;
+  status: "started" | "completed" | "failed";
+  durationMs: number;
+  summary?: string;
+  subSteps?: ToolSubStep[];
+}
+
+export interface ToolProgressEvent {
+  toolName: string;
+  status: "started" | "completed" | "failed";
+  description: string;
+  timestamp: string;
+  subSteps?: ToolSubStep[];
+}
+
 export interface WorkflowMessage {
   id: string;
   role: WorkflowMessageRole;
@@ -239,6 +262,8 @@ export interface WorkflowMessage {
     selectedOptionIds?: string[];
     [key: string]: unknown;
   };
+  toolCalls?: ToolCallStep[];
+  messageType?: "COMMAND" | "CHAT";
   createdAt: string;
 }
 

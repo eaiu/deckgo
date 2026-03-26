@@ -24,6 +24,34 @@
               <span class="bubble-role">{{ messageRoleLabel(message.role) }}</span>
               <span class="bubble-time">{{ formatTime(message.createdAt) }}</span>
             </div>
+            <!-- Tool call steps -->
+            <div v-if="message.toolCalls?.length" class="tool-steps">
+              <div
+                v-for="step in message.toolCalls"
+                :key="step.id"
+                class="tool-step"
+                :class="{ expanded: expandedSteps.has(step.id) }"
+                @click="toggleStep(step.id)"
+              >
+                <div class="tool-step-head">
+                  <span class="tool-step-icon" :class="step.status">
+                    {{ step.status === 'completed' ? '\u2713' : step.status === 'failed' ? '\u2717' : '\u25CF' }}
+                  </span>
+                  <span class="tool-step-label">{{ toolStepLabel(step.toolName) }}</span>
+                  <span v-if="step.durationMs" class="tool-step-time">{{ step.durationMs }}ms</span>
+                  <span class="tool-step-chevron">&#9660;</span>
+                </div>
+                <div v-if="expandedSteps.has(step.id)" class="tool-step-body">
+                  <p v-if="step.summary">{{ step.summary }}</p>
+                  <div v-if="step.subSteps?.length" class="tool-sub-steps">
+                    <div v-for="sub in step.subSteps" :key="sub.label" class="tool-sub-step" :class="sub.status">
+                      <span class="sub-step-icon"/>
+                      <span>{{ sub.label }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <p class="bubble-text">{{ messageText(message) }}</p>
             <div class="bubble-foot">
               <span>{{ workflowStageLabel(message.stage) }}</span>
@@ -111,66 +139,50 @@
               <span class="chat-page-badge">{{ session.currentStage === 'DESIGN' ? 'FINAL' : 'DRAFT' }}</span>
             </div>
           </template>
+
+          <!-- ── Real-time progress (while request in-flight) ── -->
+          <div v-if="loading" class="chat-progress">
+            <div class="typing-dots"><span/><span/><span/></div>
+            <div v-if="liveProgress" class="progress-tool">
+              <span class="progress-spinner"/>
+              <span>{{ liveProgress.description }}</span>
+            </div>
+            <div v-if="liveProgress?.subSteps?.length" class="progress-sub-steps">
+              <div
+                v-for="sub in liveProgress.subSteps"
+                :key="sub.label"
+                class="progress-sub"
+                :class="sub.status"
+              >
+                <span class="sub-icon"/>
+                <span>{{ sub.label }}</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- ── Composer ── -->
       <div class="chat-composer">
-        <template v-if="session.currentStage === 'DISCOVERY' && session.discoveryCard">
-          <textarea
-            v-model="freeformAnswer"
-            class="chat-input"
-            rows="2"
-            :placeholder="session.discoveryCard.freeformHint ?? '补充你的额外要求...'"
-          />
-          <div class="chat-actions">
-            <button class="chat-send-btn" :disabled="loading" @click="submitDiscovery">
-              {{ loading ? "提交中..." : "提交需求并生成大纲" }}
-            </button>
-          </div>
-        </template>
-
-        <template v-else-if="session.currentStage === 'OUTLINE'">
-          <textarea
-            v-model="outlineFeedback"
-            class="chat-input"
-            rows="2"
-            placeholder="修改大纲... 按 Enter 发送，Shift + Enter 换行"
-          />
-          <div class="chat-actions">
-            <button
-              class="chat-secondary-btn"
-              :disabled="loading || !outlineFeedback.trim()"
-              @click="applyOutlineFeedback"
-            >应用修改</button>
-            <button class="chat-send-btn" :disabled="loading" @click="runCommand('CONTINUE_TO_RESEARCH')">
-              {{ loading ? "生成中..." : "继续资料搜集" }}
-            </button>
-          </div>
-        </template>
-
-        <template v-else-if="session.currentStage === 'RESEARCH'">
-          <div class="chat-actions single">
-            <button class="chat-send-btn" :disabled="loading" @click="runCommand('CONTINUE_TO_PLANNING')">
-              {{ loading ? "生成中..." : "继续生成策划稿" }}
-            </button>
-          </div>
-        </template>
-
-        <template v-else-if="session.currentStage === 'PLANNING'">
-          <div class="chat-actions single">
-            <button class="chat-send-btn" :disabled="loading" @click="runCommand('CONTINUE_TO_DESIGN')">
-              {{ loading ? "生成中..." : "继续生成设计稿" }}
-            </button>
-          </div>
-        </template>
-
-        <template v-else>
-          <p class="chat-done-hint">设计流程已完成。</p>
-          <div class="chat-actions single">
-            <button class="chat-export-btn" @click="exportAllSvg">导出全部 SVG</button>
-          </div>
-        </template>
+        <textarea
+          v-model="chatInput"
+          class="chat-input"
+          rows="2"
+          placeholder="输入你的想法... 按 Enter 发送"
+          @keydown.enter.exact.prevent="sendChat"
+        />
+        <div class="chat-actions">
+          <button
+            v-if="session.pages.length"
+            class="chat-export-btn"
+            @click="exportAllSvg"
+          >导出全部 SVG</button>
+          <button
+            class="chat-send-btn"
+            :disabled="loading || !chatInput.trim()"
+            @click="sendChat"
+          >{{ loading ? '处理中...' : '发送' }}</button>
+        </div>
 
         <div v-if="error" class="chat-error">
           <strong>操作失败</strong>
@@ -279,11 +291,17 @@
             <span class="canvas-badge">{{ layoutLabel(currentPage.pagePlan.layout) }}</span>
           </div>
           <div class="canvas-slide-area">
-            <div class="canvas-slide-frame" v-html="currentSvg"></div>
+            <div v-if="currentSvg" class="canvas-slide-frame" v-html="currentSvg"></div>
+            <div v-else class="canvas-slide-loading">
+              <div class="slide-loading-inner">
+                <span class="progress-spinner large"/>
+                <p>正在生成第 {{ currentPage.orderIndex }} 页...</p>
+              </div>
+            </div>
           </div>
         </template>
         <div v-else class="canvas-empty-state">
-          <p>当前阶段还没有可展示的页面。</p>
+          <p>{{ loading ? '页面生成中...' : '当前阶段还没有可展示的页面。' }}</p>
         </div>
       </div>
     </section>
@@ -303,14 +321,17 @@
             :key="page.id"
             type="button"
             class="page-thumb"
-            :class="{ active: page.id === selectedPageId }"
+            :class="{ active: page.id === selectedPageId, generating: !thumbnailSvg(page) }"
             @click="selectedPageId = page.id"
           >
             <span class="page-thumb-num">{{ page.orderIndex }}</span>
-            <div class="page-thumb-preview" v-html="thumbnailSvg(page)"></div>
+            <div v-if="thumbnailSvg(page)" class="page-thumb-preview" v-html="thumbnailSvg(page)"></div>
+            <div v-else class="page-thumb-skeleton">
+              <span class="progress-spinner small"/>
+            </div>
             <div class="page-thumb-meta">
               <strong>{{ page.title }}</strong>
-              <span>{{ layoutLabel(page.pagePlan.layout) }}</span>
+              <span>{{ thumbnailSvg(page) ? layoutLabel(page.pagePlan.layout) : '生成中...' }}</span>
             </div>
           </button>
         </template>
@@ -348,6 +369,7 @@ import type {
   PageResearchItem,
   PageLayout,
   SvgPage,
+  ToolProgressEvent,
   WorkflowCommandType,
   WorkflowMessage,
   WorkflowMessageRole,
@@ -356,9 +378,9 @@ import type {
   WorkflowStage
 } from "@deckgo/deck-core";
 import { workflowStageLabel } from "@deckgo/deck-core";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { fetchWorkflowSession, sendWorkflowCommand } from "../api";
+import { fetchWorkflowSession, sendChatMessage, sendWorkflowCommand, subscribeProgress } from "../api";
 
 const route = useRoute();
 
@@ -375,6 +397,11 @@ const freeformAnswer = ref("");
 const outlineFeedback = ref("");
 const discoverySelections = reactive<Record<string, string>>({});
 const currentQuestionIdx = ref(0);
+const chatInput = ref("");
+const liveProgress = ref<ToolProgressEvent | null>(null);
+const expandedSteps = reactive(new Set<string>());
+let progressSource: EventSource | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 const discoveryQuestions = computed(() =>
   session.value?.discoveryCard?.questions ?? []
@@ -481,16 +508,111 @@ watch(
 
 onMounted(loadSession);
 
+onUnmounted(() => {
+  stopPolling();
+  progressSource?.close();
+});
+
 async function loadSession() {
   loading.value = true;
   error.value = "";
   try {
     session.value = await fetchWorkflowSession(String(route.params.sessionId));
+    // If backend is still processing, resume progress tracking
+    if (session.value?.status === "PROCESSING") {
+      startPolling();
+    }
   } catch (exception) {
     error.value = exception instanceof Error ? exception.message : "加载会话失败";
   } finally {
     loading.value = false;
   }
+}
+
+function startPolling() {
+  loading.value = true;
+  // Subscribe to SSE for live progress
+  if (!progressSource && session.value) {
+    progressSource = subscribeProgress(session.value.sessionId, (event) => {
+      liveProgress.value = event;
+    });
+  }
+  // Poll session state every 3 seconds until no longer PROCESSING
+  if (!pollTimer) {
+    pollTimer = setInterval(async () => {
+      try {
+        const fresh = await fetchWorkflowSession(String(route.params.sessionId));
+        session.value = fresh;
+        if (fresh.status !== "PROCESSING") {
+          stopPolling();
+        }
+      } catch {
+        // Ignore poll errors
+      }
+    }, 3000);
+  }
+}
+
+function stopPolling() {
+  loading.value = false;
+  liveProgress.value = null;
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  if (progressSource) {
+    progressSource.close();
+    progressSource = null;
+  }
+}
+
+async function sendChat() {
+  if (!session.value || !chatInput.value.trim()) return;
+  error.value = "";
+  liveProgress.value = null;
+  const message = chatInput.value;
+  chatInput.value = "";
+
+  // Start polling + SSE immediately
+  startPolling();
+
+  try {
+    const response = await sendChatMessage(session.value.sessionId, message);
+    session.value = response.sessionSnapshot;
+    stopPolling();
+  } catch (exception) {
+    // If request timed out but backend is still processing, keep polling silently
+    if (exception instanceof DOMException && exception.name === "TimeoutError") {
+      // Don't show error — polling will continue tracking progress
+      return;
+    }
+    if (exception instanceof DOMException && exception.name === "AbortError") {
+      return;
+    }
+    error.value = exception instanceof Error ? exception.message : "发送失败";
+    stopPolling();
+  }
+}
+
+function toggleStep(stepId: string) {
+  if (expandedSteps.has(stepId)) {
+    expandedSteps.delete(stepId);
+  } else {
+    expandedSteps.add(stepId);
+  }
+}
+
+function toolStepLabel(toolName: string): string {
+  const labels: Record<string, string> = {
+    generateOutline: "生成大纲",
+    reviseOutline: "修改大纲",
+    generatePageResearch: "逐页资料搜集",
+    generatePagePlans: "生成页面策划稿",
+    generateFinalDesign: "生成最终设计稿",
+    redesignPage: "修改页面设计",
+    getSessionContext: "读取会话状态"
+  };
+  return labels[toolName] ?? toolName;
 }
 
 async function runCommand(

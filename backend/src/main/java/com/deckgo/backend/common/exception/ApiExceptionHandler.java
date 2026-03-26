@@ -1,5 +1,6 @@
 package com.deckgo.backend.common.exception;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -45,7 +46,12 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ApiError handleUnexpected(Exception exception) {
+    public ApiError handleUnexpected(Exception exception, HttpServletRequest request) {
+        String accept = request.getHeader("Accept");
+        if (accept != null && accept.contains("text/event-stream")) {
+            // SSE connection error — do not attempt to serialize ApiError
+            return null;
+        }
         return new ApiError("internal_error", exception.getMessage(), List.of(), OffsetDateTime.now());
     }
 

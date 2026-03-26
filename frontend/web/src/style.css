@@ -2905,3 +2905,286 @@ p {
   .outline-section-pages,
   .chat-embed-options { grid-template-columns: 1fr; }
 }
+
+/* ═══ Tool Call Steps ═══ */
+.tool-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.tool-step {
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.08);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tool-step:hover {
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.tool-step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.tool-step-icon {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.tool-step-icon.completed {
+  background: #10b981;
+  color: #fff;
+}
+
+.tool-step-icon.failed {
+  background: #ef4444;
+  color: #fff;
+}
+
+.tool-step-icon.started {
+  background: #f59e0b;
+  color: #fff;
+}
+
+.tool-step-label {
+  font-weight: 600;
+  color: #1e293b;
+  flex: 1;
+}
+
+.tool-step-time {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.tool-step-chevron {
+  font-size: 10px;
+  color: #94a3b8;
+  transition: transform 0.2s;
+}
+
+.tool-step.expanded .tool-step-chevron {
+  transform: rotate(180deg);
+}
+
+.tool-step-body {
+  padding: 0 12px 10px;
+  font-size: 12px;
+  color: #64748b;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.tool-step-body p {
+  margin: 6px 0;
+}
+
+.tool-sub-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.tool-sub-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.tool-sub-step .sub-step-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tool-sub-step.completed .sub-step-icon {
+  background: #10b981;
+}
+
+.tool-sub-step.in_progress .sub-step-icon {
+  background: #2563eb;
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.tool-sub-step.pending .sub-step-icon {
+  background: #cbd5e1;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ═══ Chat Progress (in-flight) ═══ */
+.chat-progress {
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.typing-dots {
+  display: flex;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.typing-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+  animation: typing-bounce 1.4s ease-in-out infinite;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.progress-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(37, 99, 235, 0.06);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #2563eb;
+}
+
+.progress-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(37, 99, 235, 0.2);
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.progress-sub-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 10px;
+}
+
+.progress-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.progress-sub .sub-icon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.progress-sub.completed .sub-icon {
+  background: #10b981;
+}
+
+.progress-sub.in_progress .sub-icon {
+  background: #2563eb;
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+.progress-sub.pending .sub-icon {
+  background: #cbd5e1;
+}
+
+/* ═══ Canvas Slide Loading ═══ */
+.canvas-slide-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: var(--surface-muted);
+  border-radius: 12px;
+  border: 2px dashed var(--border);
+}
+
+.slide-loading-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.slide-loading-inner p {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.progress-spinner.large {
+  width: 28px;
+  height: 28px;
+  border-width: 3px;
+}
+
+.progress-spinner.small {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+  border-color: rgba(37, 99, 235, 0.2);
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* ═══ Page Thumbnail Skeleton ═══ */
+.page-thumb.generating {
+  opacity: 0.7;
+}
+
+.page-thumb-skeleton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: linear-gradient(110deg, #f0f3f7 30%, #e8ecf1 50%, #f0f3f7 70%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 6px;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

@@ -1,5 +1,6 @@
 package com.deckgo.backend.workflow.entity;
 
+import com.deckgo.backend.common.JsonSanitizer;
 import com.deckgo.backend.workflow.enums.WorkflowSessionStatus;
 import com.deckgo.backend.workflow.enums.WorkflowStage;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -82,11 +83,21 @@ public class WorkflowSessionEntity implements Persistable<UUID> {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         this.createdAt = now;
         this.updatedAt = now;
+        sanitizeJsonFields();
     }
 
     @PreUpdate
     public void onUpdate() {
         this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+        sanitizeJsonFields();
+    }
+
+    private void sanitizeJsonFields() {
+        this.backgroundJson = JsonSanitizer.sanitize(this.backgroundJson);
+        this.discoveryJson = JsonSanitizer.sanitize(this.discoveryJson);
+        this.discoveryAnswersJson = JsonSanitizer.sanitize(this.discoveryAnswersJson);
+        this.outlineJson = JsonSanitizer.sanitize(this.outlineJson);
+        this.pageResearchJson = JsonSanitizer.sanitize(this.pageResearchJson);
     }
 
     @PostPersist

@@ -83,6 +83,7 @@ public class DeckGoProperties {
         private final Agent outline = new Agent();
         private final Agent pagePlan = new Agent();
         private final Agent svgDesign = new Agent();
+        private final Agent orchestrator = new Agent();
 
         public Agent getDiscovery() {
             return discovery;
@@ -102,6 +103,10 @@ public class DeckGoProperties {
 
         public Agent getSvgDesign() {
             return svgDesign;
+        }
+
+        public Agent getOrchestrator() {
+            return orchestrator;
         }
     }
 

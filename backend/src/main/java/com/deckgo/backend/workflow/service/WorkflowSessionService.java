@@ -407,6 +407,8 @@ public class WorkflowSessionService {
                 message.getRole(),
                 message.getStage(),
                 message.getContentJson(),
+                message.getToolCallsJson(),
+                message.getMessageType(),
                 message.getCreatedAt()
             ))
             .toList();

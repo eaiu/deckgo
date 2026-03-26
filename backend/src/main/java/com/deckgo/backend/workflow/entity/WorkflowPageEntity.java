@@ -1,5 +1,6 @@
 package com.deckgo.backend.workflow.entity;
 
+import com.deckgo.backend.common.JsonSanitizer;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -57,11 +58,13 @@ public class WorkflowPageEntity implements Persistable<UUID> {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         this.createdAt = now;
         this.updatedAt = now;
+        this.pagePlanJson = JsonSanitizer.sanitize(this.pagePlanJson);
     }
 
     @PreUpdate
     public void onUpdate() {
         this.updatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+        this.pagePlanJson = JsonSanitizer.sanitize(this.pagePlanJson);
     }
 
     @PostPersist

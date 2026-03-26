@@ -11,6 +11,8 @@ public record WorkflowMessageResponse(
     WorkflowMessageRole role,
     WorkflowStage stage,
     JsonNode content,
+    JsonNode toolCalls,
+    String messageType,
     OffsetDateTime createdAt
 ) {
 }

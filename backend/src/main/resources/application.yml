@@ -69,3 +69,7 @@ deckgo:
         enabled: ${DECKGO_AI_WORKFLOW_SVG_DESIGN_ENABLED:true}
         model: ${DECKGO_AI_WORKFLOW_SVG_DESIGN_MODEL:}
         temperature: ${DECKGO_AI_WORKFLOW_SVG_DESIGN_TEMPERATURE:0.7}
+      orchestrator:
+        enabled: ${DECKGO_AI_WORKFLOW_ORCHESTRATOR_ENABLED:true}
+        model: ${DECKGO_AI_WORKFLOW_ORCHESTRATOR_MODEL:}
+        temperature: ${DECKGO_AI_WORKFLOW_ORCHESTRATOR_TEMPERATURE:0.3}
