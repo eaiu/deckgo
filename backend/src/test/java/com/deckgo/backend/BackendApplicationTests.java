@@ -12,6 +12,6 @@ class BackendApplicationTests {
         DeckGoProperties properties = new DeckGoProperties();
 
         assertEquals("../contracts", properties.getContractsDir());
-        assertEquals("http://localhost:4301", properties.getRendererBaseUrl());
+        assertEquals("http://localhost:5173", properties.getCors().getAllowedOrigins().get(0));
     }
 }

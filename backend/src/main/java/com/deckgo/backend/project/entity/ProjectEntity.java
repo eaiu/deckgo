@@ -36,9 +36,6 @@ public class ProjectEntity implements Persistable<UUID> {
     @Column(name = "template_id", nullable = false)
     private String templateId;
 
-    @Column(name = "current_version_id")
-    private UUID currentVersionId;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -107,14 +104,6 @@ public class ProjectEntity implements Persistable<UUID> {
 
     public void setTemplateId(String templateId) {
         this.templateId = templateId;
-    }
-
-    public UUID getCurrentVersionId() {
-        return currentVersionId;
-    }
-
-    public void setCurrentVersionId(UUID currentVersionId) {
-        this.currentVersionId = currentVersionId;
     }
 
     public OffsetDateTime getCreatedAt() {

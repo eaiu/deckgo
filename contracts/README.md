@@ -4,9 +4,7 @@
 
 当前约定：
 
-- `deckspec/`：保留中的 `DeckSpec` JSON Schema
 - `pageplan/`：SVG-first 工作流中的页面策划稿契约
 - `templates/`：模板目录清单与样式 token
-- `examples/`：示例数据
 
-这些文件的职责是让 Java、Vue 和 Node 共享同一套业务真相，而不是各自定义一套彼此漂移的数据结构。
+这些文件的职责是让后端和前端共享同一套业务真相，而不是各自定义一套彼此漂移的数据结构。

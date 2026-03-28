@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.deckgo.backend.common.exception.ValidationException;
-import com.deckgo.backend.deckspec.repository.DeckVersionRepository;
 import com.deckgo.backend.workflow.dto.CreateWorkflowSessionRequest;
 import com.deckgo.backend.workflow.dto.WorkflowCommandRequest;
 import com.deckgo.backend.workflow.dto.WorkflowSessionResponse;
@@ -28,7 +27,6 @@ import org.springframework.boot.test.context.SpringBootTest;
     "spring.datasource.password=",
     "spring.flyway.enabled=false",
     "spring.jpa.hibernate.ddl-auto=create-drop",
-    "deckgo.render-worker-delay-ms=600000",
     "deckgo.ai.tavily.enabled=false",
     "deckgo.ai.workflow.discovery.enabled=false",
     "deckgo.ai.workflow.research.enabled=false",
@@ -40,9 +38,6 @@ class WorkflowSessionServiceIntegrationTests {
 
     @Autowired
     private WorkflowSessionService workflowSessionService;
-
-    @Autowired
-    private DeckVersionRepository deckVersionRepository;
 
     @Autowired
     private WorkflowVersionRepository workflowVersionRepository;
@@ -59,7 +54,6 @@ class WorkflowSessionServiceIntegrationTests {
         assertNotNull(created.discoveryCard());
         assertNull(created.discoveryAnswers());
         assertNull(created.outline());
-        assertEquals(0, deckVersionRepository.count());
 
         WorkflowSessionResponse outlined = workflowSessionService.executeCommand(
             created.sessionId(),
@@ -113,7 +107,6 @@ class WorkflowSessionServiceIntegrationTests {
         assertEquals(WorkflowStage.DESIGN, designed.currentStage());
         assertEquals(WorkflowSessionStatus.COMPLETED, designed.status());
         assertTrue(designed.pages().stream().allMatch(page -> page.finalSvg() != null && page.finalSvg().contains("<svg")));
-        assertEquals(0, deckVersionRepository.count());
 
         assertThrows(
             ValidationException.class,

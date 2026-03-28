@@ -9,7 +9,6 @@ public record ProjectResponse(
     String topic,
     String audience,
     String templateId,
-    UUID currentVersionId,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) {

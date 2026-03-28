@@ -36,7 +36,7 @@ class ProjectRepositoryPersistenceTests {
         assertNotNull(created.getUpdatedAt());
         assertFalse(created.isNew());
 
-        created.setCurrentVersionId(UUID.randomUUID());
+        created.setTitle("Assigned ID project updated");
         ProjectEntity updated = projectRepository.saveAndFlush(created);
 
         assertNotNull(updated.getCreatedAt());

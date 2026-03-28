@@ -15,7 +15,7 @@
       </label>
       <label>
         <span>主题</span>
-        <input v-model="form.topic" placeholder="例如：DeckSpec 驱动的 AI PPT" />
+        <input v-model="form.topic" placeholder="例如：SVG-first 的 AI 演示文稿工作流" />
       </label>
       <label>
         <span>受众</span>
@@ -38,7 +38,7 @@
         <h3>{{ project.title }}</h3>
         <p>{{ project.topic }}</p>
         <p class="muted">受众：{{ project.audience }}</p>
-        <RouterLink class="ghost-button" to="/workspace">打开工作台</RouterLink>
+        <p class="muted">SVG-first 项目</p>
       </article>
     </div>
   </section>
@@ -47,7 +47,6 @@
 <script setup lang="ts">
 import type { TemplateSummary } from "@deckgo/deck-core";
 import { onMounted, reactive, ref } from "vue";
-import { RouterLink } from "vue-router";
 import { createProject, fetchProjects, fetchTemplates, type ProjectDto } from "../api";
 import { TEMPLATE_CATALOG } from "@deckgo/template-kit";
 
@@ -55,7 +54,7 @@ const projects = ref<ProjectDto[]>([]);
 const templates = ref<TemplateSummary[]>(TEMPLATE_CATALOG);
 const form = reactive({
   title: "DeckGo 项目框架",
-  topic: "DeckSpec 驱动的 AI PPT 系统",
+  topic: "SVG-first 的 AI 演示文稿工作流",
   audience: "初学工程师",
   templateId: "clarity-blue"
 });

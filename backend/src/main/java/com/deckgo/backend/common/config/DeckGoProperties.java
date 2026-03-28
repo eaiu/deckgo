@@ -9,9 +9,6 @@ import java.util.List;
 public class DeckGoProperties {
 
     private String contractsDir = "../contracts";
-    private String rendererBaseUrl = "http://localhost:4301";
-    private String artifactsDir = "../var/artifacts";
-    private long renderWorkerDelayMs = 5000L;
     private final Ai ai = new Ai();
     private final Cors cors = new Cors();
 
@@ -21,30 +18,6 @@ public class DeckGoProperties {
 
     public void setContractsDir(String contractsDir) {
         this.contractsDir = contractsDir;
-    }
-
-    public String getRendererBaseUrl() {
-        return rendererBaseUrl;
-    }
-
-    public void setRendererBaseUrl(String rendererBaseUrl) {
-        this.rendererBaseUrl = rendererBaseUrl;
-    }
-
-    public String getArtifactsDir() {
-        return artifactsDir;
-    }
-
-    public void setArtifactsDir(String artifactsDir) {
-        this.artifactsDir = artifactsDir;
-    }
-
-    public long getRenderWorkerDelayMs() {
-        return renderWorkerDelayMs;
-    }
-
-    public void setRenderWorkerDelayMs(long renderWorkerDelayMs) {
-        this.renderWorkerDelayMs = renderWorkerDelayMs;
     }
 
     public Ai getAi() {
