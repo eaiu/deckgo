@@ -1,4 +1,11 @@
-import type { ToolCallStep, ToolProgressEvent, WorkflowCommandType, WorkflowSessionSnapshot } from "@deckgo/deck-core";
+import type {
+  BackgroundSummary,
+  DiscoveryCard,
+  ToolCallStep,
+  ToolProgressEvent,
+  WorkflowCommandType,
+  WorkflowSessionSnapshot
+} from "@deckgo/deck-core";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
@@ -41,15 +48,81 @@ export async function fetchTemplates() {
 }
 
 export async function createProject(payload: {
+  prompt: string;
+  pageCountTarget?: number;
+  stylePreset?: string;
+  backgroundAssetPath?: string;
+  workflowConstraints?: Record<string, unknown>;
+}) {
+  return request<ProjectStudioSnapshotDto>("/api/projects", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export interface RequirementFormDto {
+  id: string;
+  status: string;
+  basedOnOutlineVersionId?: string | null;
+  summaryMd?: string | null;
+  outlineContextMd?: string | null;
+  fixedItems?: Record<string, unknown> | null;
+  initSearchQueries?: unknown;
+  initSearchResults?: BackgroundSummary | null;
+  initCorpusDigest?: Record<string, unknown> | null;
+  aiQuestions?: DiscoveryCard | null;
+  answers?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectMessageDto {
+  id: string;
+  stage: string;
+  scopeType: string;
+  targetPageId?: string | null;
+  role: string;
+  contentMd: string;
+  structuredPayload?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface StageRunDto {
+  id: string;
+  stage: string;
+  attemptNo: number;
+  status: string;
+  inputRefs?: Record<string, unknown> | null;
+  outputRef?: Record<string, unknown> | null;
+  errorMessage?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+}
+
+export interface ProjectStudioSnapshotDto {
+  projectId: string;
   title: string;
   topic: string;
   audience: string;
   templateId: string;
-}) {
-  return request<ProjectDto>("/api/projects", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
+  requestText?: string | null;
+  currentStage: string;
+  currentOutlineVersionId?: string | null;
+  pageCountTarget?: number | null;
+  stylePreset?: string | null;
+  backgroundAssetPath?: string | null;
+  workflowConstraints?: Record<string, unknown> | null;
+  requirementForm?: RequirementFormDto | null;
+  currentOutline?: Record<string, unknown> | null;
+  pages: Array<Record<string, unknown>>;
+  messages: ProjectMessageDto[];
+  projectRuns: StageRunDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchProject(projectId: string): Promise<ProjectStudioSnapshotDto> {
+  return request<ProjectStudioSnapshotDto>(`/api/projects/${projectId}`);
 }
 
 export async function createWorkflowSession(prompt: string): Promise<WorkflowSessionSnapshot> {

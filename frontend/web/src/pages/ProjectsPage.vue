@@ -10,20 +10,12 @@
 
     <form class="panel form-grid" @submit.prevent="handleCreate">
       <label>
-        <span>项目标题</span>
-        <input v-model="form.title" placeholder="例如：DeckGo 首版路线图" />
+        <span>需求描述</span>
+        <textarea v-model="form.prompt" rows="4" placeholder="例如：为一个 AI 产品写一份面向管理层的产品方案汇报"></textarea>
       </label>
       <label>
-        <span>主题</span>
-        <input v-model="form.topic" placeholder="例如：SVG-first 的 AI 演示文稿工作流" />
-      </label>
-      <label>
-        <span>受众</span>
-        <input v-model="form.audience" placeholder="例如：初学工程师" />
-      </label>
-      <label>
-        <span>模板</span>
-        <select v-model="form.templateId">
+        <span>风格预设</span>
+        <select v-model="form.stylePreset">
           <option v-for="template in templates" :key="template.id" :value="template.id">
             {{ template.name }}
           </option>
@@ -53,10 +45,8 @@ import { TEMPLATE_CATALOG } from "@deckgo/template-kit";
 const projects = ref<ProjectDto[]>([]);
 const templates = ref<TemplateSummary[]>(TEMPLATE_CATALOG);
 const form = reactive({
-  title: "DeckGo 项目框架",
-  topic: "SVG-first 的 AI 演示文稿工作流",
-  audience: "初学工程师",
-  templateId: "clarity-blue"
+  prompt: "为一个 AI 产品写一份面向管理层的产品方案汇报",
+  stylePreset: "clarity-blue"
 });
 
 async function loadProjects() {
@@ -76,7 +66,7 @@ async function loadTemplates() {
 }
 
 async function handleCreate() {
-  await createProject({ ...form });
+  await createProject({ prompt: form.prompt, stylePreset: form.stylePreset });
   await loadProjects();
 }
 

@@ -12,6 +12,7 @@ import com.deckgo.backend.workflow.enums.WorkflowCommandType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,7 +48,7 @@ class ProjectStudioServiceIntegrationTests {
     private ObjectMapper objectMapper;
 
     @Test
-    void shouldCreateAndRunProjectThroughDesignWithPageHeads() {
+    void shouldCreateAndRunProjectThroughDesignWithPageHeads() throws Exception {
         ProjectStudioSnapshot created = projectStudioService.createProject(
             new CreateStudioProjectRequest("为一个 AI 项目写一份产品介绍 PPT", 12, null, null, objectMapper.createObjectNode().put("tone", "formal"))
         );
@@ -55,6 +56,26 @@ class ProjectStudioServiceIntegrationTests {
         assertEquals("DISCOVERY", created.currentStage());
         assertNotNull(created.requirementForm());
         assertFalse(created.messages().isEmpty());
+        assertNotNull(created.requirementForm().initSearchResults());
+
+        Map<String, Object> discoveryRun = jdbcTemplate.queryForMap(
+            "select stage, status, output_ref_json from project_stage_runs where project_id = ? order by started_at desc limit 1",
+            created.projectId()
+        );
+        assertEquals("DISCOVERY", discoveryRun.get("stage"));
+        assertEquals("COMPLETED", discoveryRun.get("status"));
+        assertTrue(objectMapper.readTree(String.valueOf(discoveryRun.get("output_ref_json"))).path("sourceCount").asInt() >= 1);
+        assertTrue(objectMapper.readTree(String.valueOf(discoveryRun.get("output_ref_json"))).path("questionCount").asInt() >= 1);
+
+        String assistantPayload = jdbcTemplate.queryForObject(
+            "select structured_payload_json from project_messages where project_id = ? and role = ? order by created_at desc limit 1",
+            String.class,
+            created.projectId(),
+            "ASSISTANT"
+        );
+        assertNotNull(assistantPayload);
+        assertTrue(objectMapper.readTree(assistantPayload).hasNonNull("backgroundSummary"));
+        assertTrue(objectMapper.readTree(assistantPayload).hasNonNull("discoveryCard"));
 
         ProjectStudioSnapshot outlined = projectStudioService.executeCommand(
             created.projectId(),

@@ -161,7 +161,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { createWorkflowSession, fetchProjects, type ProjectDto } from "../api";
+import { createProject, fetchProjects, type ProjectDto } from "../api";
 
 const router = useRouter();
 
@@ -265,10 +265,10 @@ async function handleSubmit() {
   error.value = "";
 
   try {
-    const session = await createWorkflowSession(trimmedPrompt);
-    await router.push(`/studio/${session.sessionId}`);
+    const project = await createProject({ prompt: trimmedPrompt });
+    await router.push(`/projects/${project.projectId}`);
   } catch (exception) {
-    error.value = exception instanceof Error ? exception.message : "创建会话失败";
+    error.value = exception instanceof Error ? exception.message : "创建项目失败";
   } finally {
     loading.value = false;
   }

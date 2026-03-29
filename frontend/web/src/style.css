@@ -1844,6 +1844,195 @@ p {
   color: var(--muted);
 }
 
+.project-stage-screen {
+  min-height: 100vh;
+  padding: 24px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.94), transparent 28%),
+    linear-gradient(180deg, #eef2f6 0%, #f7f9fc 100%);
+}
+
+.project-stage-shell,
+.project-stage-column,
+.project-stage-card,
+.project-stage-card-head,
+.project-stage-actions,
+.project-stage-hero-main,
+.project-stage-copy,
+.project-stage-summary,
+.project-stage-source-list,
+.project-stage-source-card,
+.project-stage-run-list,
+.project-stage-run-card,
+.project-stage-fixed-list {
+  display: grid;
+}
+
+.project-stage-shell,
+.project-stage-column,
+.project-stage-card,
+.project-stage-actions,
+.project-stage-hero-main,
+.project-stage-copy,
+.project-stage-summary,
+.project-stage-source-list,
+.project-stage-source-card,
+.project-stage-run-list,
+.project-stage-run-card,
+.project-stage-fixed-list {
+  gap: 16px;
+}
+
+.project-stage-shell {
+  max-width: 1320px;
+  margin: 0 auto;
+  gap: 20px;
+}
+
+.project-stage-hero,
+.project-stage-card {
+  padding: 24px;
+}
+
+.project-stage-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.project-stage-hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.project-stage-copy {
+  gap: 12px;
+}
+
+.project-stage-copy h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.project-stage-request {
+  max-width: 56rem;
+  color: var(--muted);
+  font-size: 1rem;
+}
+
+.project-stage-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.project-stage-meta span,
+.project-stage-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: #425466;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.project-stage-actions {
+  justify-items: end;
+}
+
+.project-stage-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) 360px;
+  gap: 20px;
+  align-items: start;
+}
+
+.project-stage-card-head {
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 16px;
+}
+
+.project-stage-summary-secondary,
+.project-stage-empty,
+.project-stage-run-card p,
+.project-stage-source-card p,
+.project-stage-option-list li span {
+  color: var(--muted);
+}
+
+.project-stage-source-card,
+.project-stage-run-card {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  padding: 16px;
+}
+
+.project-stage-source-head,
+.project-stage-run-head,
+.project-stage-fixed-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.project-stage-source-card a {
+  width: fit-content;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.project-stage-option-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.project-stage-option-list li {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.project-stage-fixed-item {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.project-stage-fixed-item strong,
+.project-stage-run-head strong,
+.project-stage-source-head strong {
+  color: #0f172a;
+}
+
+.project-stage-run-note {
+  font-family: monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.project-stage-run-error {
+  color: #b42318;
+}
+
 @media (max-width: 1480px) {
   .studio-shell {
     grid-template-columns: 336px minmax(0, 1fr) 252px;
@@ -1882,6 +2071,10 @@ p {
   .studio-stage-badges,
   .studio-view-switch {
     justify-content: flex-start;
+  }
+
+  .project-stage-layout {
+    grid-template-columns: 1fr;
   }
 
   .outline-page-grid,
@@ -1936,6 +2129,30 @@ p {
 }
 
 @media (max-width: 720px) {
+  .project-stage-screen {
+    padding: 14px;
+  }
+
+  .project-stage-hero,
+  .project-stage-hero-top,
+  .project-stage-card-head,
+  .project-stage-source-head,
+  .project-stage-run-head,
+  .project-stage-fixed-item {
+    display: grid;
+  }
+
+  .project-stage-actions {
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .project-stage-actions .primary-button,
+  .project-stage-actions .ghost-button {
+    width: 100%;
+    justify-content: center;
+  }
+
   .studio-shell {
     padding: 12px;
   }

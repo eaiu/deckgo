@@ -115,10 +115,6 @@ public class ProjectStudioService {
         );
         projectRepository.flush();
 
-        JsonNode backgroundSummary = tavilySearchService.collectBackgroundSummary(prompt)
-            .orElseGet(() -> workflowContentService.generateBackgroundSummary(project));
-        JsonNode discoveryCard = discoveryAgentService.generateDiscoveryCard(project, backgroundSummary);
-
         updateProjectStudioColumns(
             project.getId(),
             prompt,
@@ -129,6 +125,34 @@ public class ProjectStudioService {
             request.backgroundAssetPath(),
             request.workflowConstraints()
         );
+
+        UUID runId = startProjectStageRun(
+            project.getId(),
+            WorkflowStage.DISCOVERY.name(),
+            initialDiscoveryInput(prompt, templateId, request)
+        );
+        appendProjectEvent(
+            project.getId(),
+            "PROJECT_CREATED",
+            WorkflowStage.DISCOVERY.name(),
+            SCOPE_PROJECT,
+            null,
+            null,
+            projectCreatedPayload(project.getId(), templateId)
+        );
+        appendProjectEvent(
+            project.getId(),
+            "BACKGROUND_RESEARCH_STARTED",
+            WorkflowStage.DISCOVERY.name(),
+            SCOPE_PROJECT,
+            null,
+            runId,
+            objectNode("prompt", prompt)
+        );
+
+        JsonNode backgroundSummary = tavilySearchService.collectBackgroundSummary(prompt)
+            .orElseGet(() -> workflowContentService.generateBackgroundSummary(project));
+        JsonNode discoveryCard = discoveryAgentService.generateDiscoveryCard(project, backgroundSummary);
 
         UUID requirementFormId = UUID.randomUUID();
         OffsetDateTime now = utcNow();
@@ -156,8 +180,7 @@ public class ProjectStudioService {
             toTimestamp(now)
         );
 
-        UUID runId = startProjectStageRun(project.getId(), WorkflowStage.DISCOVERY.name(), objectNode("projectId", project.getId().toString()));
-        finishProjectStageRun(runId, STATUS_COMPLETED, objectNode("requirementFormId", requirementFormId.toString()), null);
+        finishProjectStageRun(runId, STATUS_COMPLETED, initialDiscoveryOutput(requirementFormId, backgroundSummary, discoveryCard), null);
         appendProjectMessage(project.getId(), WorkflowStage.DISCOVERY.name(), SCOPE_PROJECT, null, WorkflowMessageRole.USER.name(), prompt, textPayload(prompt));
         appendProjectMessage(
             project.getId(),
@@ -165,10 +188,18 @@ public class ProjectStudioService {
             SCOPE_PROJECT,
             null,
             WorkflowMessageRole.ASSISTANT.name(),
-            "我先查了一下背景信息，并基于它生成了几个需要你确认的问题。",
-            discoveryCard
+            "背景调研已完成，并基于它生成了几个需要你确认的问题。",
+            initialDiscoveryPayload(backgroundSummary, discoveryCard)
         );
-        appendProjectEvent(project.getId(), "PROJECT_CREATED", WorkflowStage.DISCOVERY.name(), SCOPE_PROJECT, null, null, objectNode("requirementFormId", requirementFormId.toString()));
+        appendProjectEvent(
+            project.getId(),
+            "BACKGROUND_RESEARCH_COMPLETED",
+            WorkflowStage.DISCOVERY.name(),
+            SCOPE_PROJECT,
+            null,
+            runId,
+            backgroundCompletedPayload(requirementFormId, backgroundSummary)
+        );
         appendProjectEvent(project.getId(), "DISCOVERY_CARD_GENERATED", WorkflowStage.DISCOVERY.name(), SCOPE_PROJECT, null, runId, discoveryCard);
         return getProject(project.getId());
     }
@@ -1371,6 +1402,55 @@ public class ProjectStudioService {
         return node;
     }
 
+    private JsonNode initialDiscoveryInput(String prompt, String templateId, CreateStudioProjectRequest request) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("prompt", prompt);
+        node.put("templateId", templateId);
+        if (request.pageCountTarget() != null) {
+            node.put("pageCountTarget", request.pageCountTarget());
+        }
+        if (request.stylePreset() != null && !request.stylePreset().isBlank()) {
+            node.put("stylePreset", request.stylePreset().trim());
+        }
+        if (request.backgroundAssetPath() != null && !request.backgroundAssetPath().isBlank()) {
+            node.put("backgroundAssetPath", request.backgroundAssetPath().trim());
+        }
+        if (request.workflowConstraints() != null) {
+            node.set("workflowConstraints", request.workflowConstraints());
+        }
+        return node;
+    }
+
+    private JsonNode initialDiscoveryOutput(UUID requirementFormId, JsonNode backgroundSummary, JsonNode discoveryCard) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("requirementFormId", requirementFormId.toString());
+        node.put("sourceCount", sourceCount(backgroundSummary));
+        node.put("questionCount", discoveryCard.path("questions").size());
+        node.put("summaryReady", !backgroundSummary.path("summary").asText("").isBlank());
+        return node;
+    }
+
+    private JsonNode initialDiscoveryPayload(JsonNode backgroundSummary, JsonNode discoveryCard) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.set("backgroundSummary", nullSafe(backgroundSummary));
+        node.set("discoveryCard", nullSafe(discoveryCard));
+        return node;
+    }
+
+    private JsonNode projectCreatedPayload(UUID projectId, String templateId) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("projectId", projectId.toString());
+        node.put("templateId", templateId);
+        return node;
+    }
+
+    private JsonNode backgroundCompletedPayload(UUID requirementFormId, JsonNode backgroundSummary) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("requirementFormId", requirementFormId.toString());
+        node.put("sourceCount", sourceCount(backgroundSummary));
+        return node;
+    }
+
     private JsonNode buildDiscoveryAnswers(ProjectStudioCommandRequest request) {
         ObjectNode answers = objectMapper.createObjectNode();
         ArrayNode selected = answers.putArray("selectedOptionIds");
@@ -1392,6 +1472,12 @@ public class ProjectStudioService {
         node.put("summary", backgroundSummary.path("summary").asText(""));
         node.put("topicUnderstanding", backgroundSummary.path("topicUnderstanding").asText(""));
         return node;
+    }
+
+    private int sourceCount(JsonNode backgroundSummary) {
+        return backgroundSummary != null && backgroundSummary.path("sources").isArray()
+            ? backgroundSummary.path("sources").size()
+            : 0;
     }
 
     private JsonNode keyFindings(JsonNode item) {

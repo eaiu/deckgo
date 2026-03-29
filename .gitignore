@@ -1,6 +1,7 @@
 # Project temp files
 .codex-temp/
-docs/
+docs/*
+!docs/interface-persistence-design.md
 .codex/
 .claude/
 CLAUDE.md
