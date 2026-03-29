@@ -6,8 +6,14 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:web": "npm --workspace web run dev",
-    "build:web": "npm --workspace web run build",
+    "dev:web": "npm run build:packages && npm --workspace web run dev",
+    "build:web": "npm run build:packages && npm --workspace web run build",
     "build:packages": "npm --workspace @deckgo/deck-core run build && npm --workspace @deckgo/template-kit run build"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.59.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
   }
 }

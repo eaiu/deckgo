@@ -1,6 +1,6 @@
 package com.deckgo.backend.studio.dto;
 
-import com.deckgo.backend.workflow.enums.WorkflowCommandType;
+import com.deckgo.backend.studio.enums.WorkflowCommandType;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import java.util.UUID;

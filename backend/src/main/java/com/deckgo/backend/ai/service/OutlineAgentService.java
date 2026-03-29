@@ -2,7 +2,7 @@ package com.deckgo.backend.ai.service;
 
 import com.deckgo.backend.common.config.DeckGoProperties;
 import com.deckgo.backend.project.entity.ProjectEntity;
-import com.deckgo.backend.workflow.service.WorkflowContentService;
+import com.deckgo.backend.studio.service.WorkflowContentService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;

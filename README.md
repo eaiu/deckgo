@@ -1,6 +1,6 @@
 # DeckGo
 
-DeckGo 是一个 SVG-first 的 AI 演示文稿工作台。
+DeckGo 是一个面向 AI PPT 生成的 Spring Boot + Spring AI 工作台。
 
 当前主链路是：
 
@@ -8,8 +8,8 @@ DeckGo 是一个 SVG-first 的 AI 演示文稿工作台。
 
 当前仓库结构：
 
-- `backend/`：`Spring Boot + Spring AI`，负责项目、工作流、AI 编排、持久化与 API
-- `frontend/web/`：`Vue 3 + Vite` 的 SVG 创作工作台
+- `backend/`：`Spring Boot + Spring AI`，负责项目级工作流、持久化与 API
+- `frontend/web/`：`Vue 3 + Vite` 的项目工作台
 - `frontend/packages/`：前端共享 TS 包
 - `contracts/`：`PagePlan` Schema 与模板目录
 - `scripts/`：本地开发脚本
@@ -18,15 +18,12 @@ DeckGo 是一个 SVG-first 的 AI 演示文稿工作台。
 当前默认产品入口：
 
 - 首页只保留一个需求输入框
-- 创建后进入 `/studio/:sessionId`
-- 左侧是聊天与阶段推进
-- 中间是当前页 SVG 画布
-- 右侧是页面列表与缩略预览
+- 创建后进入 `/projects/:projectId`
+- 当前默认先展示项目首阶段：背景调研、需求单、问题卡与阶段运行记录
+- 项目主模型统一为 `projects + requirement_forms + outline_versions + project_pages + research/draft/design` 这一套表
+- 旧的 `workflow-sessions` 运行时链路已经移除，数据库中也通过迁移清理
 
 如果你第一次进入这个仓库，建议按下面顺序阅读：
 
-1. `docs/项目要求.md`
-2. `docs/project-plan.md`
-3. `docs/architecture-overview.md`
-4. `docs/dev-setup.md`
-5. `docs/database-schema.md`
+1. `docs/interface-persistence-design.md`
+2. `README.md`

@@ -1,7 +1,6 @@
 package com.deckgo.backend.project.service;
 
 import com.deckgo.backend.common.exception.NotFoundException;
-import com.deckgo.backend.project.dto.CreateProjectRequest;
 import com.deckgo.backend.project.dto.ProjectResponse;
 import com.deckgo.backend.project.entity.ProjectEntity;
 import com.deckgo.backend.project.repository.ProjectRepository;
@@ -33,18 +32,6 @@ public class ProjectService {
     @Transactional(readOnly = true)
     public ProjectResponse getProject(UUID projectId) {
         return toResponse(findEntity(projectId));
-    }
-
-    @Transactional
-    public ProjectResponse createProject(CreateProjectRequest request) {
-        templateCatalogService.getTemplate(request.templateId());
-
-        return toResponse(projectRepository.save(newProject(
-            request.title(),
-            request.topic(),
-            request.audience(),
-            request.templateId()
-        )));
     }
 
     @Transactional

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.deckgo.backend.studio.dto.CreateStudioProjectRequest;
 import com.deckgo.backend.studio.dto.ProjectStudioCommandRequest;
 import com.deckgo.backend.studio.dto.ProjectStudioSnapshot;
-import com.deckgo.backend.workflow.enums.WorkflowCommandType;
+import com.deckgo.backend.studio.enums.WorkflowCommandType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.util.List;

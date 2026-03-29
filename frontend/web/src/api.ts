@@ -1,11 +1,4 @@
-import type {
-  BackgroundSummary,
-  DiscoveryCard,
-  ToolCallStep,
-  ToolProgressEvent,
-  WorkflowCommandType,
-  WorkflowSessionSnapshot
-} from "@deckgo/deck-core";
+import type { BackgroundSummary, DiscoveryCard } from "@deckgo/deck-core";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
@@ -123,61 +116,4 @@ export interface ProjectStudioSnapshotDto {
 
 export async function fetchProject(projectId: string): Promise<ProjectStudioSnapshotDto> {
   return request<ProjectStudioSnapshotDto>(`/api/projects/${projectId}`);
-}
-
-export async function createWorkflowSession(prompt: string): Promise<WorkflowSessionSnapshot> {
-  return request<WorkflowSessionSnapshot>("/api/workflow-sessions", {
-    method: "POST",
-    body: JSON.stringify({ prompt })
-  });
-}
-
-export async function fetchWorkflowSession(sessionId: string): Promise<WorkflowSessionSnapshot> {
-  return request<WorkflowSessionSnapshot>(`/api/workflow-sessions/${sessionId}`);
-}
-
-export async function sendWorkflowCommand(
-  sessionId: string,
-  payload: {
-    command: WorkflowCommandType;
-    selectedOptionIds?: string[];
-    freeformAnswer?: string;
-    feedback?: string;
-  }
-): Promise<WorkflowSessionSnapshot> {
-  return request<WorkflowSessionSnapshot>(`/api/workflow-sessions/${sessionId}/commands`, {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-}
-
-export interface ChatResponseDto {
-  sessionId: string;
-  assistantMessage: string;
-  toolCalls: ToolCallStep[];
-  sessionSnapshot: WorkflowSessionSnapshot;
-}
-
-export async function sendChatMessage(sessionId: string, message: string): Promise<ChatResponseDto> {
-  return request<ChatResponseDto>(`/api/workflow-sessions/${sessionId}/chat`, {
-    method: "POST",
-    body: JSON.stringify({ message }),
-    signal: AbortSignal.timeout(300_000)
-  });
-}
-
-export function subscribeProgress(
-  sessionId: string,
-  onEvent: (event: ToolProgressEvent) => void
-): EventSource {
-  const source = new EventSource(`${API_BASE_URL}/api/workflow-sessions/${sessionId}/progress`);
-  source.addEventListener("tool-progress", (e) => {
-    try {
-      onEvent(JSON.parse((e as MessageEvent).data) as ToolProgressEvent);
-    } catch { /* ignore parse errors */ }
-  });
-  source.onerror = () => {
-    // SSE connection lost — silently ignore, will be closed by caller
-  };
-  return source;
 }

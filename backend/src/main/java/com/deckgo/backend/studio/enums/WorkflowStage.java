@@ -1,4 +1,4 @@
-package com.deckgo.backend.workflow.enums;
+package com.deckgo.backend.studio.enums;
 
 public enum WorkflowStage {
     DISCOVERY,

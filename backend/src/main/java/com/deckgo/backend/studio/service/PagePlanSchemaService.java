@@ -1,4 +1,4 @@
-package com.deckgo.backend.workflow.service;
+package com.deckgo.backend.studio.service;
 
 import com.deckgo.backend.common.config.DeckGoProperties;
 import com.deckgo.backend.common.exception.ValidationException;

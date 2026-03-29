@@ -1,4 +1,4 @@
-package com.deckgo.backend.workflow.service;
+package com.deckgo.backend.studio.service;
 
 import com.deckgo.backend.project.entity.ProjectEntity;
 import com.deckgo.backend.template.dto.TemplateSummary;
