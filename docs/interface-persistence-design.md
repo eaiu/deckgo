@@ -194,7 +194,7 @@
 - 迁移：Flyway
 - JPA 策略：`ddl-auto: validate`
 - JSON 持久化：大量使用 `jsonb`
-- 向量能力：`create extension if not exists vector`，`source_chunks.embedding` 为 `vector`
+- 当前默认不强依赖 `pgvector`；`source_chunks.embedding` 先以占位列保存，后续再升级为真正向量列
 
 迁移演进大致如下：
 
@@ -361,7 +361,7 @@ Workflow 模型关系总结：
 设计说明：
 
 - 这部分是为“可追溯研究语料”和“后续 RAG / 检索”预留的。
-- `source_chunks.embedding` 当前 schema 已支持向量，但现阶段写入为 `null`。
+- `source_chunks.embedding` 当前只是为后续向量检索预留的占位字段，现阶段不会写入真实 embedding。
 - `bocha_search_cache` 虽然表名是 `bocha`，当前实现写入的 `provider` 实际是 `tavily`。
 
 #### 3.5.6 Retrieval And Export

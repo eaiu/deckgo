@@ -217,8 +217,6 @@ create table if not exists source_documents (
     created_at timestamptz not null
 );
 
-create extension if not exists vector;
-
 create table if not exists source_chunks (
     id uuid primary key,
     source_document_id uuid not null references source_documents(id) on delete cascade,
@@ -226,7 +224,8 @@ create table if not exists source_chunks (
     section_path varchar(500) null,
     content_md text not null,
     content_for_embedding text not null,
-    embedding vector null,
+    -- Keep the column name for future pgvector adoption, but do not require the extension at bootstrap time.
+    embedding text null,
     token_count integer not null,
     created_at timestamptz not null,
     constraint uk_source_chunks_doc_index unique (source_document_id, chunk_index)

@@ -1,6 +1,4 @@
 create domain if not exists jsonb as json;
-create domain if not exists vector as varchar(4096);
-
 alter table projects add column if not exists request_text clob;
 alter table projects add column if not exists current_stage varchar(50);
 alter table projects add column if not exists current_outline_version_id uuid;
@@ -215,7 +213,7 @@ create table if not exists source_chunks (
     section_path varchar(500) null,
     content_md clob not null,
     content_for_embedding clob not null,
-    embedding vector null,
+    embedding clob null,
     token_count integer not null,
     created_at timestamp with time zone not null,
     constraint uk_source_chunks_doc_index unique (source_document_id, chunk_index)
