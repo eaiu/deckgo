@@ -70,3 +70,9 @@ deckgo:
         enabled: ${DECKGO_AI_WORKFLOW_ORCHESTRATOR_ENABLED:true}
         model: ${DECKGO_AI_WORKFLOW_ORCHESTRATOR_MODEL:}
         temperature: ${DECKGO_AI_WORKFLOW_ORCHESTRATOR_TEMPERATURE:0.3}
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  type-handlers-package: com.deckgo.backend.project.mapper.typehandler
+  configuration:
+    map-underscore-to-camel-case: true

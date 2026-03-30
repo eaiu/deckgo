@@ -1,157 +1,106 @@
 <template>
-  <main class="home-screen">
-    <div class="home-shell">
-      <header class="home-header">
-        <div class="home-brand">
-          <span class="home-brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M24 8C16.268 8 10 14.268 10 22C10 29.732 16.268 36 24 36C28.692 36 32.845 33.693 35.385 30.144" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
-              <path d="M24 16C20.686 16 18 18.686 18 22C18 25.314 20.686 28 24 28C26.011 28 27.79 27.012 28.875 25.494" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
-              <path d="M32.5 12.5C37.747 15.575 41 21.26 41 27.5" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
-              <path d="M36 6C42.255 9.867 46 16.809 46 24.5" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+  <main class="min-h-screen bg-[#eef2f6] text-slate-800">
+    <div class="mx-auto max-w-5xl px-6 pb-20 pt-28">
+      <h1 class="mb-12 text-center text-5xl font-bold tracking-tight text-slate-800">AI PPT 生成助手</h1>
+
+      <section
+        class="mx-auto mb-16 max-w-3xl rounded-[2rem] border border-slate-100 bg-white p-5 shadow-lg shadow-slate-200/50 transition-shadow hover:shadow-xl hover:shadow-slate-200/50"
+        :class="error ? 'mb-4' : 'mb-20'"
+      >
+        <div class="flex items-start gap-4">
+          <div class="pt-1 text-slate-400">
+            <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.8-3.8" />
             </svg>
-          </span>
-          <div class="home-brand-copy">
-            <strong>DeckGo</strong>
-            <span>AI 演示文稿工作台</span>
           </div>
+          <textarea
+            v-model="requestText"
+            rows="5"
+            class="min-h-[160px] w-full resize-none bg-transparent text-lg leading-7 text-slate-700 outline-none placeholder:text-slate-400"
+            placeholder="输入你的 PPT 需求，例如：生成一份关于 2024 年人工智能发展趋势的报告..."
+            @keydown="handleComposerKeydown"
+          />
         </div>
 
-        <button class="home-header-action" type="button" @click="scrollToProjects">
-          我的历史项目
-        </button>
-      </header>
-
-      <section class="home-hero">
-        <div class="home-hero-copy">
-          <p class="home-kicker">从一个主题开始，推进成一份可以展示的内容</p>
-          <h1 class="home-tagline">让想法，更好地被表达</h1>
-          <p class="home-subtitle">
-            输入你的主题、目标或核心观点，DeckGo 会把零散思路推进成一份清晰的演示文稿。
-          </p>
+        <div class="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
+          <div class="text-xs leading-5 text-slate-400">Enter 换行，Ctrl/Cmd + Enter 开始生成</div>
+          <button
+            class="inline-flex h-12 items-center justify-center gap-2 self-end rounded-xl bg-blue-600 px-6 font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            :disabled="creating || !requestText.trim()"
+            @click="handleCreateProject"
+          >
+            <svg
+              v-if="creating"
+              viewBox="0 0 24 24"
+              class="h-5 w-5 animate-spin"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            开始生成
+          </button>
         </div>
-
-        <form class="home-composer" @submit.prevent="handleSubmit">
-          <div class="home-mode-switch">
-            <button
-              v-for="mode in contentModes"
-              :key="mode.label"
-              :class="['home-mode-button', { 'is-active': mode.active, 'is-static': !mode.active }]"
-              type="button"
-              :aria-disabled="!mode.active"
-            >
-              <span>{{ mode.label }}</span>
-              <small v-if="mode.note">{{ mode.note }}</small>
-            </button>
-          </div>
-
-          <div class="home-composer-body">
-            <label class="home-input-wrap">
-              <span class="sr-only">描述你的主题或想法</span>
-              <textarea
-                ref="promptInputRef"
-                v-model="prompt"
-                class="home-input"
-                rows="6"
-                placeholder="描述你的主题或想法，例如：为一个 AI 产品写一份融资路演提纲"
-              />
-            </label>
-          </div>
-
-          <div class="home-composer-footer">
-            <div class="home-composer-tools">
-              <!-- <button class="home-utility-button" type="button" aria-disabled="true">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M9.5 13.5L15 8C16.657 6.343 19.343 6.343 21 8C22.657 9.657 22.657 12.343 21 14L12 23C9.239 25.761 4.761 25.761 2 23C-0.761 20.239 -0.761 15.761 2 13L11.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span>上传文件</span>
-                <small>即将支持</small>
-              </button> -->
-
-              <!-- <button class="home-utility-button home-utility-button-muted" type="button" aria-disabled="true">
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 3L20 7.5V16.5L12 21L4 16.5V7.5L12 3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                  <path d="M12 8.5L15.5 10.5V14.5L12 16.5L8.5 14.5V10.5L12 8.5Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                </svg>
-                <span>主题</span>
-              </button> -->
-
-              <p v-if="error" class="form-error home-form-error">{{ error }}</p>
-            </div>
-
-            <button class="home-create-button" type="submit" :disabled="loading || !prompt.trim()">
-              <span>{{ loading ? "正在创建" : "开始创建" }}</span>
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M5 12H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                <path d="M13 6L19 12L13 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-          </div>
-        </form>
-
-        <section class="home-quickstart" aria-label="快速开始">
-          <div class="home-quickstart-heading">
-            <p>快速开始</p>
-            <span>从这里挑一个方向，快速生成你的首个主题</span>
-          </div>
-
-          <div class="home-shortcuts">
-            <button
-              v-for="item in quickStartPrompts"
-              :key="item.title"
-              type="button"
-              class="home-shortcut"
-              @click="applyQuickStart(item.prompt)"
-            >
-              <span class="home-shortcut-tag">{{ item.tag }}</span>
-              <strong>{{ item.title }}</strong>
-              <span>{{ item.description }}</span>
-            </button>
-          </div>
-        </section>
       </section>
 
-      <section ref="projectsSectionRef" class="home-projects" id="history-projects">
-        <div class="home-section-heading">
-          <div>
-            <p class="home-section-kicker">我的历史项目</p>
-            <h2>继续查看最近创建过的内容</h2>
-            <p class="home-section-copy">这里只展示你已经创建过的项目，当前版本先不支持从这里直接继续编辑。</p>
+      <p v-if="error" class="mx-auto mb-16 max-w-3xl text-sm text-red-600">{{ error }}</p>
+
+      <section class="mx-auto max-w-4xl">
+        <h2 class="mb-6 flex items-center gap-2 text-xl font-semibold text-slate-700">
+          <svg viewBox="0 0 24 24" class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v6l3 2" />
+          </svg>
+          最近项目
+        </h2>
+
+        <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+          <div
+            v-if="loading"
+            class="rounded-2xl border border-slate-100 bg-white p-5 text-sm text-slate-500 shadow-sm md:col-span-3"
+          >
+            正在读取最近项目...
           </div>
-          <span class="home-section-count">{{ sortedProjects.length }}</span>
-        </div>
+          <div
+            v-else-if="!projects.length"
+            class="rounded-2xl border border-slate-100 bg-white p-5 text-sm text-slate-500 shadow-sm md:col-span-3"
+          >
+            还没有项目，先创建一个任务。
+          </div>
 
-        <div v-if="projectsLoading" class="home-project-state">
-          <p>正在加载历史项目…</p>
-        </div>
+          <template v-else>
+            <article
+              v-for="project in projects"
+              :key="project.projectId"
+              class="group cursor-pointer rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:border-blue-100 hover:shadow-md"
+              @click="openProject(project)"
+            >
+              <div class="relative mb-4 aspect-video w-full overflow-hidden rounded-xl border border-slate-100 bg-slate-50 transition-colors group-hover:border-blue-100">
+                <div v-if="project.previewSvgMarkup" class="absolute inset-0 bg-white [&_svg]:h-full [&_svg]:w-full" v-html="project.previewSvgMarkup" />
+                <div v-else class="absolute inset-0 flex items-center justify-center transition-colors group-hover:bg-blue-50/50">
+                  <svg viewBox="0 0 24 24" class="h-9 w-9 text-slate-300 transition-colors group-hover:text-blue-300" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16l4-2 4 2 4-2 4 2V8z" />
+                  </svg>
+                </div>
+                <span
+                  class="absolute right-3 top-3 rounded-md px-2 py-1 text-[10px] font-medium text-white backdrop-blur-md"
+                  :class="previewTone(project)"
+                >
+                  {{ previewLabel(project) }}
+                </span>
+              </div>
 
-        <div v-else-if="projectsError" class="home-project-state home-project-state-error">
-          <p>{{ projectsError }}</p>
-        </div>
-
-        <div v-else-if="sortedProjects.length === 0" class="home-project-state">
-          <p>暂无历史项目。先从上面的输入框开始创建你的第一份演示文稿。</p>
-        </div>
-
-        <div v-else class="home-project-grid">
-          <article v-for="project in sortedProjects" :key="project.id" class="home-project-card">
-            <div class="home-project-card-top">
-              <span class="home-project-template">模板 {{ project.templateId }}</span>
-              <time class="home-project-time" :datetime="project.updatedAt">
-                {{ formatUpdatedAt(project.updatedAt) }}
-              </time>
-            </div>
-
-            <div class="home-project-card-body">
-              <h3>{{ project.title || "未命名项目" }}</h3>
-              <p>{{ project.topic || "这个项目还没有可展示的主题摘要。" }}</p>
-            </div>
-
-            <div class="home-project-meta">
-              <span>演示文稿</span>
-              <span>仅展示</span>
-            </div>
-          </article>
+              <h3 class="line-clamp-2 font-medium text-slate-800 transition-colors group-hover:text-blue-600">
+                {{ project.title }}
+              </h3>
+              <p class="mt-1.5 text-sm text-slate-400">{{ formatDate(project.updatedAt) }}</p>
+            </article>
+          </template>
         </div>
       </section>
     </div>
@@ -159,118 +108,83 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { createProject, fetchProjects, type ProjectDto } from "../api";
+import { createProject, listProjects, type ProjectSummary } from "../api";
 
 const router = useRouter();
 
-const contentModes = [
-  { label: "演示文稿", active: true, note: "" },
-  // { label: "社媒图文", active: false, note: "即将支持" },
-  // { label: "长图", active: false, note: "即将支持" }
-] as const;
-
-const quickStartPrompts = [
-  {
-    tag: "融资",
-    title: "融资路演提纲",
-    description: "面向投资人梳理问题、方案、市场与增长逻辑。",
-    prompt: "为一款 AI 产品写一份面向投资人的融资路演提纲"
-  },
-  {
-    tag: "方案",
-    title: "产品方案汇报",
-    description: "把需求背景、产品方案和落地节奏整理清楚。",
-    prompt: "为一个企业协作产品写一份面向管理层的产品方案汇报"
-  },
-  {
-    tag: "复盘",
-    title: "季度业务复盘",
-    description: "围绕目标、结果、问题和下一步动作组织内容。",
-    prompt: "生成一份季度业务复盘演示文稿，包含目标达成、问题总结和下季度计划"
-  },
-  {
-    tag: "培训",
-    title: "培训课件结构",
-    description: "用清晰章节把知识点组织成可讲授的内容。",
-    prompt: "为新员工培训制作一份课件结构，主题是 AI 产品工作流入门"
-  }
-] as const;
-
-const prompt = ref("");
+const requestText = ref("");
+const projects = ref<ProjectSummary[]>([]);
 const loading = ref(false);
+const creating = ref(false);
 const error = ref("");
-const projects = ref<ProjectDto[]>([]);
-const projectsLoading = ref(true);
-const projectsError = ref("");
-const promptInputRef = ref<HTMLTextAreaElement | null>(null);
-const projectsSectionRef = ref<HTMLElement | null>(null);
-
-const sortedProjects = computed(() =>
-  [...projects.value].sort((left, right) => {
-    const leftTime = new Date(left.updatedAt).getTime();
-    const rightTime = new Date(right.updatedAt).getTime();
-    return rightTime - leftTime;
-  })
-);
 
 onMounted(loadProjects);
 
 async function loadProjects() {
-  projectsLoading.value = true;
-  projectsError.value = "";
-
-  try {
-    projects.value = await fetchProjects();
-  } catch {
-    projects.value = [];
-    projectsError.value = "暂时无法获取历史项目，你仍然可以直接开始创建新的演示文稿。";
-  } finally {
-    projectsLoading.value = false;
-  }
-}
-
-function applyQuickStart(value: string) {
-  prompt.value = value;
-  error.value = "";
-  nextTick(() => promptInputRef.value?.focus());
-}
-
-function scrollToProjects() {
-  projectsSectionRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function formatUpdatedAt(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "最近更新未知";
-  }
-
-  return `更新于 ${new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(date)}`;
-}
-
-async function handleSubmit() {
-  const trimmedPrompt = prompt.value.trim();
-  if (!trimmedPrompt) {
-    return;
-  }
-
   loading.value = true;
   error.value = "";
-
   try {
-    const project = await createProject({ prompt: trimmedPrompt });
-    await router.push(`/projects/${project.projectId}`);
+    projects.value = await listProjects();
   } catch (exception) {
-    error.value = exception instanceof Error ? exception.message : "创建项目失败";
+    error.value = exception instanceof Error ? exception.message : "最近项目读取失败";
   } finally {
     loading.value = false;
   }
+}
+
+async function handleCreateProject() {
+  if (!requestText.value.trim() || creating.value) {
+    return;
+  }
+
+  creating.value = true;
+  error.value = "";
+  try {
+    const project = await createProject(requestText.value);
+    requestText.value = "";
+    openProject(project);
+  } catch (exception) {
+    error.value = exception instanceof Error ? exception.message : "项目创建失败";
+  } finally {
+    creating.value = false;
+  }
+}
+
+function openProject(project: ProjectSummary) {
+  if (project.currentStage === "DISCOVERY") {
+    router.push(`/projects/${project.projectId}/start`);
+    return;
+  }
+  router.push(`/projects/${project.projectId}/editor`);
+}
+
+function handleComposerKeydown(event: KeyboardEvent) {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    void handleCreateProject();
+  }
+}
+
+function previewLabel(project: ProjectSummary) {
+  if (project.previewSurface === "design" || project.currentStage === "DESIGN") return "首页设计稿";
+  if (project.previewSurface === "planning" || project.currentStage === "PLANNING") return "首页策划稿";
+  return "研究工作台";
+}
+
+function previewTone(project: ProjectSummary) {
+  if (project.previewSurface === "design" || project.currentStage === "DESIGN") return "bg-emerald-500/90";
+  if (project.previewSurface === "planning" || project.currentStage === "PLANNING") return "bg-blue-500/90";
+  return "bg-slate-800/60";
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 </script>

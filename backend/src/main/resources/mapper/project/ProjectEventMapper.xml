@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+    PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.deckgo.backend.project.mapper.ProjectEventMapper">
+
+    <sql id="ProjectEventColumns">
+        stream_id,
+        event_id,
+        project_id,
+        event_type,
+        stage,
+        scope_type,
+        target_page_id,
+        agent_run_id,
+        cast(payload_json as varchar) as payload_json,
+        created_at
+    </sql>
+
+    <select id="selectEventsAfterStreamId" resultType="com.deckgo.backend.project.pojo.ProjectEventPO">
+        select
+        <include refid="ProjectEventColumns" />
+        from project_events
+        where project_id = #{projectId, jdbcType=OTHER}
+          and stream_id &gt; #{afterStreamId}
+        order by stream_id asc
+        limit #{limit}
+    </select>
+</mapper>

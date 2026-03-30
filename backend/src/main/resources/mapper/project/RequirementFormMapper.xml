@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+    PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.deckgo.backend.project.mapper.RequirementFormMapper">
+
+    <sql id="RequirementFormColumns">
+        id,
+        project_id,
+        status,
+        based_on_outline_version_id,
+        summary_md,
+        outline_context_md,
+        cast(fixed_items_json as varchar) as fixed_items_json,
+        cast(init_search_queries_json as varchar) as init_search_queries_json,
+        cast(init_search_results_json as varchar) as init_search_results_json,
+        cast(init_corpus_digest_json as varchar) as init_corpus_digest_json,
+        cast(ai_questions_json as varchar) as ai_questions_json,
+        cast(answers_json as varchar) as answers_json,
+        created_at,
+        updated_at
+    </sql>
+
+    <select id="selectByProjectId" resultType="com.deckgo.backend.project.pojo.RequirementFormPO">
+        select
+        <include refid="RequirementFormColumns" />
+        from requirement_forms
+        where project_id = #{projectId, jdbcType=OTHER}
+    </select>
+
+    <update id="updateAnswersJson">
+        update requirement_forms
+        set answers_json = cast(#{answersJson, jdbcType=VARCHAR} as jsonb),
+            status = #{status},
+            updated_at = #{updatedAt}
+        where id = #{requirementFormId, jdbcType=OTHER}
+    </update>
+</mapper>

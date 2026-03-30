@@ -2,9 +2,10 @@
 
 ## Overview
 
-当前项目已经收敛到单一主模型：
+当前项目已经收敛到单一主模型，但接口层现在开始拆分为两层：
 
-- 接口主入口：`/api/projects/**`
+- 项目主接口：`/api/projects/**`
+- studio 编排接口：`/api/studio/projects/**`
 - 持久化主模型：`projects + requirement_forms + outline_versions + project_pages + research/draft/design`
 - 前端主入口：`/projects/:projectId`
 
@@ -26,6 +27,45 @@
   - 请求体：
     ```json
     {
+      "title": "季度经营复盘",
+      "requestText": "围绕 AI 产品增长做季度经营复盘"
+    }
+    ```
+  - 返回：`ProjectDetailResponse`
+  - 动作：只创建最小项目头，不触发编排。其余约束与需求信息在 requirements/init 阶段继续补齐
+
+- `GET /api/projects/{projectId}`
+  - 返回项目详情
+
+- `PUT /api/projects/{projectId}`
+  - 更新项目元数据
+
+- `DELETE /api/projects/{projectId}`
+  - 删除项目
+
+- `GET /api/projects/{projectId}/events/stream`
+  - SSE 订阅项目事件流
+
+### Requirements
+
+- `GET /api/projects/{projectId}/requirements/form`
+  - 读取 requirement form
+
+- `POST /api/projects/{projectId}/requirements/answers:batch`
+  - 批量写入问题答案
+
+- `PATCH /api/projects/{projectId}/requirements/answers/{questionCode}`
+  - 单题更新答案
+
+- `POST /api/projects/{projectId}/requirements/confirm`
+  - 将当前 requirement answers 转成首阶段确认动作，并推进到 outline
+
+### Studio
+
+- `POST /api/studio/projects`
+  - 请求体：
+    ```json
+    {
       "prompt": "用户原始需求",
       "pageCountTarget": 12,
       "stylePreset": "clarity-blue",
@@ -40,10 +80,10 @@
     3. 生成需求确认问题卡
     4. 落库 requirement form、消息、事件、stage run
 
-- `GET /api/projects/{projectId}`
+- `GET /api/studio/projects/{projectId}`
   - 返回项目级聚合快照
 
-- `POST /api/projects/{projectId}/commands`
+- `POST /api/studio/projects/{projectId}/commands`
   - 推进阶段：
     - `SUBMIT_DISCOVERY`
     - `APPLY_OUTLINE_FEEDBACK`
@@ -51,26 +91,26 @@
     - `CONTINUE_TO_PLANNING`
     - `CONTINUE_TO_DESIGN`
 
-- `POST /api/projects/{projectId}/chat`
+- `POST /api/studio/projects/{projectId}/chat`
   - 当前是命令式推进的语义包装
 
-- `GET /api/projects/{projectId}/pages/{pageId}`
+- `GET /api/studio/projects/{projectId}/pages/{pageId}`
   - 读取单页快照
 
-- `POST /api/projects/{projectId}/pages/{pageId}/redesign`
+- `POST /api/studio/projects/{projectId}/pages/{pageId}/redesign`
   - 基于当前 draft 重新生成 design
 
 ## Current Frontend Entry
 
 - `HomePage`
   - 输入 `prompt`
-  - 调用 `POST /api/projects`
+  - 调用 `POST /api/studio/projects`
   - 跳转到 `/projects/:projectId`
 
 - `ProjectStagePage`
   - 展示首阶段背景调研、来源、问题卡、消息流、stage run
 
-当前前端已经不再依赖 `/api/workflow-sessions/**`。
+当前前端已经不再依赖 `/api/workflow-sessions/**`，并且 studio 页面改为从 `/api/studio/projects/**` 读取编排快照。
 
 ## Current Persistence Model
 

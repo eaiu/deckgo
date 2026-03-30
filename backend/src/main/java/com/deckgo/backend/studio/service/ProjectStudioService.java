@@ -10,7 +10,7 @@ import com.deckgo.backend.common.exception.NotFoundException;
 import com.deckgo.backend.common.exception.ValidationException;
 import com.deckgo.backend.project.entity.ProjectEntity;
 import com.deckgo.backend.project.repository.ProjectRepository;
-import com.deckgo.backend.project.service.ProjectService;
+import com.deckgo.backend.project.service.ProjectDomainService;
 import com.deckgo.backend.studio.dto.CreateStudioProjectRequest;
 import com.deckgo.backend.studio.dto.OutlineVersionSnapshot;
 import com.deckgo.backend.studio.dto.ProjectMessageSnapshot;
@@ -62,7 +62,7 @@ public class ProjectStudioService {
     private static final String STATUS_STALE = "STALE";
     private static final String STATUS_READY = "READY";
 
-    private final ProjectService projectService;
+    private final ProjectDomainService projectDomainService;
     private final ProjectRepository projectRepository;
     private final WorkflowContentService workflowContentService;
     private final TavilySearchService tavilySearchService;
@@ -75,7 +75,7 @@ public class ProjectStudioService {
     private final ObjectMapper objectMapper;
 
     public ProjectStudioService(
-        ProjectService projectService,
+        ProjectDomainService projectDomainService,
         ProjectRepository projectRepository,
         WorkflowContentService workflowContentService,
         TavilySearchService tavilySearchService,
@@ -87,7 +87,7 @@ public class ProjectStudioService {
         JdbcTemplate jdbcTemplate,
         ObjectMapper objectMapper
     ) {
-        this.projectService = projectService;
+        this.projectDomainService = projectDomainService;
         this.projectRepository = projectRepository;
         this.workflowContentService = workflowContentService;
         this.tavilySearchService = tavilySearchService;
@@ -106,13 +106,31 @@ public class ProjectStudioService {
         String templateId = request.stylePreset() == null || request.stylePreset().isBlank()
             ? workflowContentService.deriveTemplateId(prompt)
             : request.stylePreset().trim();
-        ProjectEntity project = projectService.createWorkflowProject(
+        ProjectEntity project = projectDomainService.createWorkflowProject(
             workflowContentService.deriveProjectTitle(prompt),
             prompt,
             "待确认",
             templateId
         );
         projectRepository.flush();
+        bootstrapProject(project, request, templateId, true);
+        return getProject(project.getId());
+    }
+
+    @Transactional
+    public ProjectStudioSnapshot bootstrapProject(UUID projectId, CreateStudioProjectRequest request) {
+        ProjectEntity project = projectDomainService.findEntityForUpdate(projectId);
+        String prompt = request.prompt().trim();
+        String templateId = request.stylePreset() == null || request.stylePreset().isBlank()
+            ? currentStylePreset(projectId, project.getTemplateId())
+            : request.stylePreset().trim();
+        bootstrapProject(project, request, templateId, false);
+        return getProject(projectId);
+    }
+
+    private void bootstrapProject(ProjectEntity project, CreateStudioProjectRequest request, String templateId, boolean emitProjectCreatedEvent) {
+        ensureRequirementFormAbsent(project.getId());
+        String prompt = request.prompt().trim();
 
         updateProjectStudioColumns(
             project.getId(),
@@ -130,15 +148,17 @@ public class ProjectStudioService {
             WorkflowStage.DISCOVERY.name(),
             initialDiscoveryInput(prompt, templateId, request)
         );
-        appendProjectEvent(
-            project.getId(),
-            "PROJECT_CREATED",
-            WorkflowStage.DISCOVERY.name(),
-            SCOPE_PROJECT,
-            null,
-            null,
-            projectCreatedPayload(project.getId(), templateId)
-        );
+        if (emitProjectCreatedEvent) {
+            appendProjectEvent(
+                project.getId(),
+                "PROJECT_CREATED",
+                WorkflowStage.DISCOVERY.name(),
+                SCOPE_PROJECT,
+                null,
+                null,
+                projectCreatedPayload(project.getId(), templateId)
+            );
+        }
         appendProjectEvent(
             project.getId(),
             "BACKGROUND_RESEARCH_STARTED",
@@ -200,7 +220,6 @@ public class ProjectStudioService {
             backgroundCompletedPayload(requirementFormId, backgroundSummary)
         );
         appendProjectEvent(project.getId(), "DISCOVERY_CARD_GENERATED", WorkflowStage.DISCOVERY.name(), SCOPE_PROJECT, null, runId, discoveryCard);
-        return getProject(project.getId());
     }
 
     @Transactional(readOnly = true)
@@ -323,6 +342,238 @@ public class ProjectStudioService {
         finishPageStageRun(runId, STATUS_COMPLETED, objectNode("designVersionId", designVersionId.toString()), null);
         appendProjectEvent(projectId, "PAGE_REDESIGNED", WorkflowStage.DESIGN.name(), SCOPE_PAGE, pageId, runId, objectNode("designVersionId", designVersionId.toString()));
         return getPage(projectId, pageId);
+    }
+
+    @Transactional
+    public ProjectPageSnapshot preparePageResearch(UUID projectId, UUID pageId) {
+        ProjectEntity project = lockProject(projectId);
+        OutlineVersionSnapshot outlineVersion = loadCurrentOutline(projectId);
+        ProjectPageSnapshot page = getPage(projectId, pageId);
+        JsonNode outlinePage = findOutlinePage(outlineVersion.outline(), page.pageCode());
+        ObjectNode prepared = buildPreparedResearchPayload(project, page, outlinePage);
+
+        UUID runId = startPageStageRun(projectId, pageId, WorkflowStage.RESEARCH.name(), prepared);
+        UUID sessionId = insertResearchSession(projectId, pageId, prepared);
+        updatePageHeadsAndStatuses(pageId, null, sessionId, null, null, null, STATUS_READY, STATUS_PENDING, STATUS_STALE, STATUS_STALE, staleResearchResolved());
+        finishPageStageRun(runId, STATUS_COMPLETED, objectNode("researchSessionId", sessionId.toString()), null);
+        appendProjectEvent(projectId, "PAGE_RESEARCH_PREPARED", WorkflowStage.RESEARCH.name(), SCOPE_PAGE, pageId, runId, objectNode("researchSessionId", sessionId.toString()));
+        return getPage(projectId, pageId);
+    }
+
+    @Transactional
+    public ProjectPageSnapshot runPageResearch(UUID projectId, UUID pageId, boolean replaceExisting) {
+        ProjectEntity project = lockProject(projectId);
+        RequirementFormSnapshot form = loadRequirementForm(projectId);
+        OutlineVersionSnapshot outlineVersion = loadCurrentOutline(projectId);
+        ProjectPageSnapshot page = getPage(projectId, pageId);
+        JsonNode outlinePage = findOutlinePage(outlineVersion.outline(), page.pageCode());
+        JsonNode background = json(form.initSearchResults());
+
+        JsonNode generated = researchAgentService.generatePageResearch(
+            project,
+            background,
+            nullSafe(form.answers()),
+            singlePageOutline(outlineVersion.outline(), outlinePage, page.pageCode())
+        );
+
+        JsonNode item = iterable(generated).iterator().hasNext()
+            ? iterable(generated).iterator().next()
+            : buildPreparedResearchPayload(project, page, outlinePage);
+
+        UUID runId = startPageStageRun(projectId, pageId, WorkflowStage.RESEARCH.name(), item);
+        UUID sessionId = insertResearchSession(projectId, pageId, item);
+        if (replaceExisting && page.currentResearchSessionId() != null) {
+            jdbcTemplate.update("delete from citations where research_session_id = ?", page.currentResearchSessionId());
+            jdbcTemplate.update("delete from research_session_sources where research_session_id = ?", page.currentResearchSessionId());
+            jdbcTemplate.update("delete from research_sources where research_session_id = ?", page.currentResearchSessionId());
+        }
+        persistResearchArtifacts(projectId, pageId, sessionId, item);
+        updatePageHeadsAndStatuses(pageId, null, sessionId, null, null, null, STATUS_COMPLETED, STATUS_COMPLETED, STATUS_STALE, STATUS_STALE, staleResearchResolved());
+        if (WorkflowStage.OUTLINE.name().equals(currentProjectStage(projectId))) {
+            updateProjectCurrentStage(projectId, WorkflowStage.RESEARCH.name());
+        }
+        finishPageStageRun(runId, STATUS_COMPLETED, objectNode("researchSessionId", sessionId.toString()), null);
+        appendProjectEvent(projectId, "PAGE_RESEARCH_COMPLETED", WorkflowStage.RESEARCH.name(), SCOPE_PAGE, pageId, runId, objectNode("researchSessionId", sessionId.toString()));
+        return getPage(projectId, pageId);
+    }
+
+    @Transactional
+    public ProjectPageSnapshot patchPageSummary(UUID projectId, UUID pageId, String summaryMd) {
+        lockProject(projectId);
+        ProjectPageSnapshot page = getPage(projectId, pageId);
+        if (page.currentResearchSessionId() == null) {
+            throw new ValidationException("当前页面还没有 research session，无法更新 summary", List.of(pageId.toString()));
+        }
+        jdbcTemplate.update(
+            "update research_sessions set summary_md = ?, updated_at = ? where id = ?",
+            summaryMd,
+            toTimestamp(utcNow()),
+            page.currentResearchSessionId()
+        );
+        updatePageHeadsAndStatuses(pageId, null, null, null, null, null, null, STATUS_COMPLETED, STATUS_STALE, STATUS_STALE, planningStaleness());
+        appendProjectEvent(projectId, "PAGE_SUMMARY_UPDATED", WorkflowStage.RESEARCH.name(), SCOPE_PAGE, pageId, null, objectNode("summaryLength", String.valueOf(summaryMd.length())));
+        return getPage(projectId, pageId);
+    }
+
+    @Transactional
+    public ProjectPageSnapshot generatePagePlanning(UUID projectId, UUID pageId) {
+        ProjectEntity project = lockProject(projectId);
+        RequirementFormSnapshot form = loadRequirementForm(projectId);
+        OutlineVersionSnapshot outlineVersion = loadCurrentOutline(projectId);
+        ProjectPageSnapshot page = getPage(projectId, pageId);
+        if (page.currentResearchSessionId() == null) {
+            throw new ValidationException("当前页面还没有 research，无法进入策划阶段", List.of(pageId.toString()));
+        }
+
+        String outlineTitle = outlineVersion.outline().path("title").asText(project.getTitle());
+        JsonNode outlinePage = findOutlinePage(outlineVersion.outline(), page.pageCode());
+        JsonNode researchPayload = loadResearchPayload(page.currentResearchSessionId());
+
+        UUID pageRunId = startPageStageRun(projectId, pageId, WorkflowStage.PLANNING.name(), objectNode("pageId", pageId.toString()));
+        JsonNode pagePlan = normalizePagePlan(
+            pagePlanAgentService.generateSinglePagePlan(project, json(form.initSearchResults()), outlinePage, researchPayload, outlineTitle, project.getTemplateId()),
+            outlinePage,
+            researchPayload
+        );
+        UUID briefVersionId = insertPageBriefVersion(projectId, pageId, page.partTitle(), pagePlan, researchPayload);
+        String draftSvg = svgDesignAgentService.generateDraftSvg(pagePlan, researchPayload, project.getTemplateId());
+        UUID draftVersionId = insertDraftVersion(projectId, pageId, briefVersionId, page.currentResearchSessionId(), draftSvg);
+        updatePageHeadsAndStatuses(pageId, briefVersionId, null, draftVersionId, null, STATUS_COMPLETED, null, null, STATUS_COMPLETED, STATUS_STALE, planningStaleness());
+        if (WorkflowStage.RESEARCH.name().equals(currentProjectStage(projectId)) || WorkflowStage.OUTLINE.name().equals(currentProjectStage(projectId))) {
+            updateProjectCurrentStage(projectId, WorkflowStage.PLANNING.name());
+        }
+        finishPageStageRun(pageRunId, STATUS_COMPLETED, objectNode("draftVersionId", draftVersionId.toString()), null);
+        appendProjectEvent(projectId, "PAGE_PLANNED", WorkflowStage.PLANNING.name(), SCOPE_PAGE, pageId, pageRunId, objectNode("draftVersionId", draftVersionId.toString()));
+        return getPage(projectId, pageId);
+    }
+
+    @Transactional
+    public ProjectPageSnapshot generatePageDesign(UUID projectId, UUID pageId) {
+        ProjectEntity project = lockProject(projectId);
+        ProjectPageSnapshot page = getPage(projectId, pageId);
+        if (page.currentDraftVersionId() == null) {
+            throw new ValidationException("当前页面还没有 draft，无法生成设计稿", List.of(pageId.toString()));
+        }
+        OutlineVersionSnapshot outlineVersion = loadCurrentOutline(projectId);
+        UUID pageRunId = startPageStageRun(projectId, pageId, WorkflowStage.DESIGN.name(), objectNode("draftVersionId", page.currentDraftVersionId().toString()));
+        JsonNode pagePlan = normalizePagePlan(
+            loadBriefPayload(page.currentBriefVersionId()),
+            findOutlinePage(outlineVersion.outline(), page.pageCode()),
+            loadResearchPayload(page.currentResearchSessionId())
+        );
+        JsonNode researchPayload = loadResearchPayload(page.currentResearchSessionId());
+        String finalSvg = svgDesignAgentService.generateFinalSvg(pagePlan, researchPayload, project.getTemplateId());
+        UUID designVersionId = insertDesignVersion(projectId, pageId, page.currentDraftVersionId(), project.getTemplateId(), currentBackgroundAsset(projectId), finalSvg);
+        updatePageHeadsAndStatuses(pageId, null, null, null, designVersionId, null, null, null, null, STATUS_COMPLETED, clearStaleness());
+        if (!WorkflowStage.DESIGN.name().equals(currentProjectStage(projectId))) {
+            updateProjectCurrentStage(projectId, WorkflowStage.DESIGN.name());
+        }
+        finishPageStageRun(pageRunId, STATUS_COMPLETED, objectNode("designVersionId", designVersionId.toString()), null);
+        appendProjectEvent(projectId, "PAGE_DESIGNED", WorkflowStage.DESIGN.name(), SCOPE_PAGE, pageId, pageRunId, objectNode("designVersionId", designVersionId.toString()));
+        return getPage(projectId, pageId);
+    }
+
+    @Transactional
+    public ProjectStudioSnapshot runBatchActionByType(UUID projectId, String actionType) {
+        return switch (actionType) {
+            case "project_batch_search" -> executeCommand(projectId, new ProjectStudioCommandRequest(WorkflowCommandType.CONTINUE_TO_RESEARCH, SCOPE_PROJECT, null, null, null, null));
+            case "project_batch_summary" -> getProject(projectId);
+            case "project_batch_draft" -> executeCommand(projectId, new ProjectStudioCommandRequest(WorkflowCommandType.CONTINUE_TO_PLANNING, SCOPE_PROJECT, null, null, null, null));
+            case "project_batch_design" -> executeCommand(projectId, new ProjectStudioCommandRequest(WorkflowCommandType.CONTINUE_TO_DESIGN, SCOPE_PROJECT, null, null, null, null));
+            default -> throw new ValidationException("不支持的 batch action", List.of(actionType));
+        };
+    }
+
+    @Transactional
+    public OutlineVersionSnapshot patchStoryboard(UUID projectId, JsonNode partsPayload) {
+        ProjectEntity project = lockProject(projectId);
+        OutlineVersionSnapshot currentOutline = loadCurrentOutline(projectId);
+        Map<UUID, ProjectPageSnapshot> pagesById = new LinkedHashMap<>();
+        for (ProjectPageSnapshot page : loadPages(projectId)) {
+            pagesById.put(page.id(), page);
+        }
+
+        int nextPageIndex = loadPageIdsByCode(projectId).keySet().stream()
+            .mapToInt(this::pageCodeNumber)
+            .max()
+            .orElse(0) + 1;
+
+        ObjectNode outline = objectMapper.createObjectNode();
+        outline.put("title", currentOutline.outline().path("title").asText(project.getTitle()));
+        outline.put("narrative", currentOutline.outline().path("narrative").asText(""));
+        ArrayNode sections = outline.putArray("sections");
+
+        List<ObjectNode> preparedPages = new ArrayList<>();
+        for (JsonNode part : iterable(partsPayload)) {
+            ObjectNode section = sections.addObject();
+            String sectionTitle = part.path("partTitle").asText("未命名章节");
+            section.put("id", "section-" + (sections.size()));
+            section.put("title", sectionTitle);
+            ArrayNode pages = section.putArray("pages");
+            for (JsonNode rawPage : iterable(part.path("pages"))) {
+                UUID pageId = rawPage.hasNonNull("pageId") ? uuid(rawPage.get("pageId").asText()) : null;
+                ProjectPageSnapshot existing = pageId == null ? null : pagesById.get(pageId);
+                String pageCode = existing != null ? existing.pageCode() : "page-%d".formatted(nextPageIndex++);
+                String title = rawPage.path("title").asText(existing != null ? existing.pageCode() : pageCode);
+                ArrayNode contentOutline = objectMapper.createArrayNode();
+                for (JsonNode item : iterable(rawPage.path("contentOutline"))) {
+                    contentOutline.add(item.asText(""));
+                }
+
+                ObjectNode page = pages.addObject();
+                page.put("id", pageCode);
+                page.put("title", title);
+                page.put("intent", contentOutline.size() > 0 ? contentOutline.get(0).asText(title) : title);
+
+                ObjectNode prepared = objectMapper.createObjectNode();
+                prepared.put("pageCode", pageCode);
+                prepared.put("sectionTitle", sectionTitle);
+                prepared.put("title", title);
+                prepared.set("contentOutline", contentOutline);
+                preparedPages.add(prepared);
+            }
+        }
+
+        UUID outlineVersionId = insertOutlineVersion(projectId, outline, STATUS_COMPLETED, currentOutline.id());
+        updateProjectStudioColumns(
+            projectId,
+            currentRequestText(projectId),
+            WorkflowStage.OUTLINE.name(),
+            outlineVersionId,
+            currentPageCountTarget(projectId),
+            currentStylePreset(projectId, project.getTemplateId()),
+            currentBackgroundAsset(projectId),
+            currentWorkflowConstraints(projectId)
+        );
+        syncProjectPages(projectId, outline, true);
+        updateRequirementFormForOutline(loadRequirementForm(projectId).id(), outlineVersionId, outline);
+
+        Map<String, UUID> pageIdsByCode = loadPageIdsByCode(projectId);
+        for (ObjectNode prepared : preparedPages) {
+            UUID pageId = pageIdsByCode.get(prepared.path("pageCode").asText());
+            if (pageId == null) {
+                continue;
+            }
+            ObjectNode brief = objectMapper.createObjectNode();
+            brief.put("pageId", prepared.path("pageCode").asText());
+            brief.put("title", prepared.path("title").asText(""));
+            brief.put("goal", prepared.path("title").asText(""));
+            brief.put("layout", "bento-grid");
+            brief.put("visualTone", "clean");
+            brief.put("speakerNotes", "");
+            ArrayNode cards = brief.putArray("cards");
+            ObjectNode card = cards.addObject();
+            card.put("id", "card-1");
+            card.put("kind", "text");
+            card.put("heading", prepared.path("title").asText(""));
+            card.put("body", prepared.path("title").asText(""));
+            card.put("emphasis", "medium");
+            UUID briefVersionId = insertPageBriefVersion(projectId, pageId, prepared.path("sectionTitle").asText(""), brief, emptyObject());
+            updatePageHeadsAndStatuses(pageId, briefVersionId, null, null, null, STATUS_COMPLETED, null, null, STATUS_STALE, STATUS_STALE, outlineChangedStaleness());
+        }
+
+        appendProjectEvent(projectId, "OUTLINE_REVISED", WorkflowStage.OUTLINE.name(), SCOPE_PROJECT, null, null, objectNode("outlineVersionId", outlineVersionId.toString()));
+        return loadOutlineVersion(outlineVersionId);
     }
 
     private void handleSubmitDiscovery(ProjectEntity project, ProjectStudioCommandRequest request) {
@@ -989,6 +1240,17 @@ public class ProjectStudioService {
         return forms.get(0);
     }
 
+    private void ensureRequirementFormAbsent(UUID projectId) {
+        Integer count = jdbcTemplate.queryForObject(
+            "select count(*) from requirement_forms where project_id = ?",
+            Integer.class,
+            projectId
+        );
+        if (count != null && count > 0) {
+            throw new ValidationException("项目初始化已存在，不能重复 bootstrap", List.of("projectId"));
+        }
+    }
+
     private OutlineVersionSnapshot loadOutlineVersion(UUID outlineId) {
         return jdbcTemplate.queryForObject(
             "select * from outline_versions where id = ?",
@@ -1496,6 +1758,49 @@ public class ProjectStudioService {
             }
         }
         return emptyObject();
+    }
+
+    private ObjectNode buildPreparedResearchPayload(ProjectEntity project, ProjectPageSnapshot page, JsonNode outlinePage) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("pageId", page.pageCode());
+        payload.put("title", outlinePage.path("title").asText(page.pageCode()));
+        payload.put("needsSearch", true);
+        payload.put("searchIntent", "为当前页补充背景、定义、案例或数据支撑。");
+        ArrayNode queries = payload.putArray("queries");
+        queries.add(outlinePage.path("title").asText(page.pageCode()));
+        queries.add(project.getTopic() + " " + outlinePage.path("title").asText(page.pageCode()));
+        payload.put("searchDepth", "basic");
+        payload.put("findings", "");
+        payload.set("sources", emptyArray());
+        return payload;
+    }
+
+    private ObjectNode singlePageOutline(JsonNode fullOutline, JsonNode outlinePage, String pageCode) {
+        ObjectNode outline = objectMapper.createObjectNode();
+        outline.put("title", fullOutline.path("title").asText(""));
+        outline.put("narrative", fullOutline.path("narrative").asText(""));
+        ArrayNode sections = outline.putArray("sections");
+        ObjectNode section = sections.addObject();
+        section.put("id", "section-single");
+        section.put("title", outlinePage.path("sectionTitle").asText("当前章节"));
+        ArrayNode pages = section.putArray("pages");
+        ObjectNode page = pages.addObject();
+        page.put("id", pageCode);
+        page.put("title", outlinePage.path("title").asText(pageCode));
+        page.put("intent", outlinePage.path("intent").asText(outlinePage.path("title").asText(pageCode)));
+        return outline;
+    }
+
+    private int pageCodeNumber(String pageCode) {
+        if (pageCode == null) {
+            return 0;
+        }
+        try {
+            int dash = pageCode.lastIndexOf('-');
+            return dash >= 0 ? Integer.parseInt(pageCode.substring(dash + 1)) : 0;
+        } catch (NumberFormatException exception) {
+            return 0;
+        }
     }
 
     private JsonNode normalizePagePlan(JsonNode pagePlan, JsonNode outlinePage, JsonNode researchPayload) {

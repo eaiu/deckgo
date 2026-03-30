@@ -8,7 +8,7 @@ DeckGo 是一个面向 AI PPT 生成的 Spring Boot + Spring AI 工作台。
 
 当前仓库结构：
 
-- `backend/`：`Spring Boot + Spring AI`，负责项目级工作流、持久化与 API
+- `backend/`：`Spring Boot + Spring AI`，负责项目级 API、studio 工作流编排与持久化
 - `frontend/web/`：`Vue 3 + Vite` 的项目工作台
 - `frontend/packages/`：前端共享 TS 包
 - `contracts/`：`PagePlan` Schema 与模板目录
@@ -21,6 +21,7 @@ DeckGo 是一个面向 AI PPT 生成的 Spring Boot + Spring AI 工作台。
 - 创建后进入 `/projects/:projectId`
 - 当前默认先展示项目首阶段：背景调研、需求单、问题卡与阶段运行记录
 - 项目主模型统一为 `projects + requirement_forms + outline_versions + project_pages + research/draft/design` 这一套表
+- 项目主接口开始收口为 `MyBatis + POJO + Service + ServiceImpl`，studio 编排接口独立保留
 - 旧的 `workflow-sessions` 运行时链路已经移除，数据库中也通过迁移清理
 
 如果你第一次进入这个仓库，建议按下面顺序阅读：

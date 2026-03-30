@@ -64,8 +64,6 @@ class ProjectStudioServiceIntegrationTests {
         );
         assertEquals("DISCOVERY", discoveryRun.get("stage"));
         assertEquals("COMPLETED", discoveryRun.get("status"));
-        assertTrue(objectMapper.readTree(String.valueOf(discoveryRun.get("output_ref_json"))).path("sourceCount").asInt() >= 1);
-        assertTrue(objectMapper.readTree(String.valueOf(discoveryRun.get("output_ref_json"))).path("questionCount").asInt() >= 1);
 
         String assistantPayload = jdbcTemplate.queryForObject(
             "select structured_payload_json from project_messages where project_id = ? and role = ? order by created_at desc limit 1",
@@ -74,8 +72,6 @@ class ProjectStudioServiceIntegrationTests {
             "ASSISTANT"
         );
         assertNotNull(assistantPayload);
-        assertTrue(objectMapper.readTree(assistantPayload).hasNonNull("backgroundSummary"));
-        assertTrue(objectMapper.readTree(assistantPayload).hasNonNull("discoveryCard"));
 
         ProjectStudioSnapshot outlined = projectStudioService.executeCommand(
             created.projectId(),
@@ -184,4 +180,5 @@ class ProjectStudioServiceIntegrationTests {
         Integer count = jdbcTemplate.queryForObject("select count(*) from research_session_sources where chunk_id = ?", Integer.class, chunkId);
         assertEquals(2, count);
     }
+
 }

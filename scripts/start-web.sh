@@ -17,4 +17,4 @@ if [[ ! -d node_modules ]]; then
   npm install
 fi
 
-exec npm run dev:web
+exec npm run dev:web -- "$@"
