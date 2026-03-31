@@ -265,6 +265,7 @@ import {
   getStudioProject,
   patchRequirementAnswer,
   sendProjectMessage,
+  uploadBackground,
   updateProject,
   type ProjectEvent,
   type ProjectStage,
@@ -318,6 +319,8 @@ const customStylePreset = ref("");
 const customQuestionAnswers = reactive<Record<string, string>>({});
 const uploadedBackground = ref("");
 let disconnect: (() => void) | null = null;
+let refreshInFlight: Promise<void> | null = null;
+let refreshPending = false;
 
 const pageCountOptions = [
   { code: "count-5-10", value: 8, label: "5-10 页", description: "适合短汇报或快速说明" },
@@ -364,20 +367,24 @@ const currentRequirementPosition = computed(() => (requirementSteps.value.length
 const canConfirm = computed(() => {
   return Boolean(selectedPageCount.value) && Boolean(selectedStylePreset.value) && requirementSteps.value.every((step) => step.answered);
 });
-const suggestedActions = computed(() => [
-  "强调业务价值",
-  "风格偏正式汇报",
-  "更适合管理层汇报"
-]);
+const suggestedActions = computed(() => {
+  if (form.value?.suggestedActions?.length) {
+    return form.value.suggestedActions.map((item) => item.label);
+  }
+  return ["强调业务价值", "风格偏正式汇报", "更适合管理层汇报"];
+});
 
 onMounted(async () => {
-  await refreshAll();
+  await scheduleRefresh(false);
   const projectId = String(route.params.projectId || "");
   if (projectId) {
     disconnect = connectProjectEventStream(projectId, {
       onEvent: async (event) => {
         events.value = [event, ...events.value].slice(0, 24);
-        await refreshAll(true);
+        if (confirming.value) {
+          return;
+        }
+        void scheduleRefresh(true);
       }
     });
   }
@@ -420,6 +427,27 @@ async function refreshAll(silent = false) {
     loading.value = false;
     refreshing.value = false;
   }
+}
+
+function scheduleRefresh(silent = true) {
+  if (refreshInFlight) {
+    refreshPending = true;
+    return refreshInFlight;
+  }
+
+  refreshInFlight = (async () => {
+    try {
+      await refreshAll(silent);
+    } finally {
+      refreshInFlight = null;
+      if (refreshPending) {
+        refreshPending = false;
+        void scheduleRefresh(true);
+      }
+    }
+  })();
+
+  return refreshInFlight;
 }
 
 async function selectPageCount(value: number) {
@@ -532,11 +560,24 @@ async function handleConfirm() {
   confirming.value = true;
   error.value = "";
   try {
+    disconnect?.();
+    disconnect = null;
     const snapshot = await confirmRequirements(projectId, noteMd.value.trim() || undefined);
     project.value = snapshot;
     router.replace(`/projects/${projectId}/editor`);
   } catch (exception) {
     error.value = exception instanceof Error ? exception.message : "生成大纲失败";
+    if (!disconnect) {
+      disconnect = connectProjectEventStream(projectId, {
+        onEvent: async (event) => {
+          events.value = [event, ...events.value].slice(0, 24);
+          if (confirming.value) {
+            return;
+          }
+          void scheduleRefresh(true);
+        }
+      });
+    }
   } finally {
     confirming.value = false;
   }
@@ -574,8 +615,22 @@ function handleBackgroundUpload(event: Event) {
   if (!file) {
     return;
   }
+  const projectId = String(route.params.projectId || "");
   uploadedBackground.value = file.name;
-  input.value = "";
+  void (async () => {
+    try {
+      if (!projectId) {
+        return;
+      }
+      const response = await uploadBackground(projectId, file);
+      uploadedBackground.value = response.backgroundAssetPath;
+      await refreshAll(true);
+    } catch (exception) {
+      error.value = exception instanceof Error ? exception.message : "背景资源上传失败";
+    } finally {
+      input.value = "";
+    }
+  })();
 }
 
 function handleChatKeydown(event: KeyboardEvent) {

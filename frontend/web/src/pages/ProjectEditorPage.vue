@@ -118,6 +118,8 @@
                     v-for="(item, index) in searchSources"
                     :key="`${index}-${String(item.title || item.url || 'source')}`"
                     :item="item"
+                    :allow-retry="true"
+                    @retry="handleRetrySearchResult(String((item as Record<string, unknown>).id || `source-${index + 1}`))"
                   />
                 </div>
                 <div v-else class="text-sm text-slate-400">当前页还没有资料池结果。右侧聊天栏会实时显示推进进度。</div>
@@ -130,8 +132,8 @@
                     在弹窗中编辑
                   </button>
                 </div>
-                <div v-if="activePage?.currentResearch" class="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">
-                  <pre class="overflow-x-auto whitespace-pre-wrap">{{ formatJson(activePage.currentResearch) }}</pre>
+                <div v-if="activePage?.pageSummaryMd || activePage?.currentResearch" class="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">
+                  <pre class="overflow-x-auto whitespace-pre-wrap">{{ activePage?.pageSummaryMd || formatJson(activePage?.currentResearch) }}</pre>
                 </div>
                 <div v-else class="text-sm text-slate-400">当前页 summary 尚未生成。</div>
               </article>
@@ -246,7 +248,11 @@ import {
   connectProjectEventStream,
   getProject,
   getStudioProject,
+  listProjectMessages,
+  listProjectPages,
+  patchPageSummary,
   redesignProjectPage,
+  retryPageSearchResult,
   runProjectCommand,
   sendProjectMessage,
   type ProjectEvent,
@@ -274,6 +280,8 @@ const outlineDraft = ref("");
 const summaryDraft = ref("");
 const events = ref<ProjectEvent[]>([]);
 let disconnect: (() => void) | null = null;
+let refreshInFlight: Promise<void> | null = null;
+let refreshPending = false;
 
 const surfaces = [
   { value: "research", label: "研究" },
@@ -297,6 +305,9 @@ const visibleMessages = computed(() =>
 );
 const presentationPages = computed(() => (project.value?.pages ?? []).filter((page) => page.currentDraftSvg || page.currentDesignSvg));
 const searchSources = computed(() => {
+  if (Array.isArray(activePage.value?.pageSearchResults)) {
+    return activePage.value?.pageSearchResults ?? [];
+  }
   const sources = activePage.value?.currentResearch?.sources;
   return Array.isArray(sources) ? sources : [];
 });
@@ -339,13 +350,13 @@ const pipelineSummary = computed(() => {
 });
 
 onMounted(async () => {
-  await refreshProject();
+  await scheduleRefresh(false);
   const projectId = String(route.params.projectId || "");
   if (projectId) {
     disconnect = connectProjectEventStream(projectId, {
       onEvent: async (event) => {
         events.value = [event, ...events.value].slice(0, 30);
-        await refreshProject(true);
+        void scheduleRefresh(true);
       }
     });
   }
@@ -370,13 +381,22 @@ async function refreshProject(silent = false) {
   error.value = "";
 
   try {
-    const [projectSummary, studioProject] = await Promise.all([getProject(projectId), getStudioProject(projectId)]);
+    const [projectSummary, studioProject, pages, messages] = await Promise.all([
+      getProject(projectId),
+      getStudioProject(projectId),
+      listProjectPages(projectId),
+      listProjectMessages(projectId)
+    ]);
     if (projectSummary.currentStage === "DISCOVERY") {
       router.replace(`/projects/${projectId}/start`);
       return;
     }
-    project.value = studioProject;
-    activePageId.value = activePageId.value || studioProject.pages[0]?.id || "";
+    project.value = {
+      ...studioProject,
+      pages,
+      messages
+    };
+    activePageId.value = activePageId.value || pages[0]?.id || "";
     surface.value = studioProject.currentStage === "DESIGN" ? "design" : studioProject.currentStage === "PLANNING" ? "planning" : "research";
     syncDraftFields();
   } catch (exception) {
@@ -387,6 +407,27 @@ async function refreshProject(silent = false) {
   }
 }
 
+function scheduleRefresh(silent = true) {
+  if (refreshInFlight) {
+    refreshPending = true;
+    return refreshInFlight;
+  }
+
+  refreshInFlight = (async () => {
+    try {
+      await refreshProject(silent);
+    } finally {
+      refreshInFlight = null;
+      if (refreshPending) {
+        refreshPending = false;
+        void scheduleRefresh(true);
+      }
+    }
+  })();
+
+  return refreshInFlight;
+}
+
 async function runStageCommand(command: string) {
   const projectId = String(route.params.projectId || "");
   if (!projectId) return;
@@ -395,6 +436,7 @@ async function runStageCommand(command: string) {
     if (!activePageId.value) {
       activePageId.value = project.value.pages[0]?.id || "";
     }
+    await scheduleRefresh(true);
   } catch (exception) {
     error.value = exception instanceof Error ? exception.message : "阶段推进失败";
   }
@@ -416,6 +458,7 @@ async function handleSendMessage() {
       uiSurface: surface.value.toUpperCase()
     });
     messageInput.value = "";
+    await scheduleRefresh(true);
   } catch (exception) {
     error.value = exception instanceof Error ? exception.message : "消息发送失败";
   } finally {
@@ -438,10 +481,25 @@ async function handleRedesign() {
   }
 }
 
+async function handleRetrySearchResult(sourceId: string) {
+  const projectId = String(route.params.projectId || "");
+  if (!projectId || !activePage.value) return;
+  try {
+    const updated = await retryPageSearchResult(projectId, activePage.value.id, sourceId);
+    if (!project.value) return;
+    project.value = {
+      ...project.value,
+      pages: project.value.pages.map((page) => (page.id === updated.id ? updated : page))
+    };
+  } catch (exception) {
+    error.value = exception instanceof Error ? exception.message : "重试资料失败";
+  }
+}
+
 function syncDraftFields() {
-  titleDraft.value = activePage.value?.pageCode || "";
+  titleDraft.value = activePage.value?.title || activePage.value?.pageCode || "";
   outlineDraft.value = formatJson(activePage.value?.currentBrief);
-  summaryDraft.value = formatJson(activePage.value?.currentResearch);
+  summaryDraft.value = activePage.value?.pageSummaryMd || formatJson(activePage.value?.currentResearch);
 }
 
 function handleSaveOutline() {
@@ -449,7 +507,24 @@ function handleSaveOutline() {
 }
 
 function handleSaveSummary() {
-  dataModalOpen.value = false;
+  const projectId = String(route.params.projectId || "");
+  if (!projectId || !activePage.value) {
+    dataModalOpen.value = false;
+    return;
+  }
+  void (async () => {
+    try {
+      const updated = await patchPageSummary(projectId, activePage.value!.id, summaryDraft.value);
+      if (!project.value) return;
+      project.value = {
+        ...project.value,
+        pages: project.value.pages.map((page) => (page.id === updated.id ? updated : page))
+      };
+      dataModalOpen.value = false;
+    } catch (exception) {
+      error.value = exception instanceof Error ? exception.message : "保存 summary 失败";
+    }
+  })();
 }
 
 function thumbnailMarkup(page: ProjectPage) {

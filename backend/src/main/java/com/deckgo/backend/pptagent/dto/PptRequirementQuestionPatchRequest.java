@@ -2,11 +2,10 @@ package com.deckgo.backend.pptagent.dto;
 
 import java.util.List;
 
-public record PptRequirementQuestionResponse(
-    String questionCode,
+public record PptRequirementQuestionPatchRequest(
     String label,
     String description,
-    List<PptRequirementQuestionOptionResponse> options,
+    List<PptRequirementQuestionOptionInput> options,
     Boolean allowCustom
 ) {
 }

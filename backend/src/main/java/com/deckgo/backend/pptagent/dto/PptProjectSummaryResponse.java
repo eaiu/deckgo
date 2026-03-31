@@ -8,6 +8,7 @@ public record PptProjectSummaryResponse(
     String title,
     String requestText,
     String currentStage,
+    String templateId,
     String previewSurface,
     String previewSvgMarkup,
     Integer pageCountTarget,

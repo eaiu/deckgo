@@ -35,7 +35,7 @@ management:
 deckgo:
   contracts-dir: ${DECKGO_CONTRACTS_DIR:../contracts}
   cors:
-    allowed-origins: ${DECKGO_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+    allowed-origins: ${DECKGO_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   ai:
     fallback-enabled: ${DECKGO_AI_FALLBACK_ENABLED:true}
     tavily:

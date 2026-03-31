@@ -7,6 +7,9 @@ import com.deckgo.backend.pptagent.dto.PptConfirmRequest;
 import com.deckgo.backend.pptagent.dto.PptCorpusDigestResponse;
 import com.deckgo.backend.pptagent.dto.PptDesignVersionResponse;
 import com.deckgo.backend.pptagent.dto.PptDraftVersionResponse;
+import com.deckgo.backend.pptagent.dto.PptExportJobResponse;
+import com.deckgo.backend.pptagent.dto.PptBackgroundUploadResponse;
+import com.deckgo.backend.pptagent.dto.PptExportCreateRequest;
 import com.deckgo.backend.pptagent.dto.PptMessageCreateRequest;
 import com.deckgo.backend.pptagent.dto.PptPageResponse;
 import com.deckgo.backend.pptagent.dto.PptPageSearchQueryResponse;
@@ -15,6 +18,8 @@ import com.deckgo.backend.pptagent.dto.PptProjectCreateRequest;
 import com.deckgo.backend.pptagent.dto.PptProjectSummaryResponse;
 import com.deckgo.backend.pptagent.dto.PptRequirementAnswerRequest;
 import com.deckgo.backend.pptagent.dto.PptRequirementFormResponse;
+import com.deckgo.backend.pptagent.dto.PptRequirementQuestionCreateRequest;
+import com.deckgo.backend.pptagent.dto.PptRequirementQuestionPatchRequest;
 import com.deckgo.backend.pptagent.dto.PptRequirementQuestionOptionResponse;
 import com.deckgo.backend.pptagent.dto.PptRequirementQuestionResponse;
 import com.deckgo.backend.pptagent.dto.PptRequirementSourceResponse;
@@ -45,8 +50,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.io.IOException;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class PptAgentApiService {
@@ -89,6 +101,10 @@ public class PptAgentApiService {
 
     public List<ProjectMessageSnapshot> listMessages(UUID projectId) {
         return projectStudioService.getProject(projectId).messages();
+    }
+
+    public List<com.deckgo.backend.studio.dto.StageRunSnapshot> listProjectRuns(UUID projectId) {
+        return projectStudioService.getProject(projectId).projectRuns();
     }
 
     public ProjectMessageSnapshot createMessage(UUID projectId, PptMessageCreateRequest request) {
@@ -209,6 +225,75 @@ public class PptAgentApiService {
         return mapRequirementForm(projectId, projectRequirementService.patchRequirementAnswer(projectId, questionCode, new RequirementAnswerPatchRequest(value)));
     }
 
+    public PptRequirementFormResponse retryRequirementSource(UUID projectId, String sourceId) {
+        RequirementFormSnapshot snapshot = projectRequirementService.getRequirementForm(projectId);
+        JsonNode initSearch = snapshot.initSearchResults() == null ? emptyObject() : snapshot.initSearchResults().deepCopy();
+        ArrayNode sources = initSearch.withArray("sources");
+        for (JsonNode item : sources) {
+            if (sourceId.equals(item.path("id").asText(""))) {
+                ((ObjectNode) item).put("content", item.path("content").asText(item.path("snippet").asText("")) + "（已重试刷新）");
+            }
+        }
+        jdbcTemplate.update(
+            "update requirement_forms set init_search_results_json = cast(? as jsonb), updated_at = ? where project_id = ?",
+            jsonText(initSearch),
+            Timestamp.from(utcNow().toInstant()),
+            projectId
+        );
+        return getRequirementForm(projectId);
+    }
+
+    public PptRequirementFormResponse createRequirementQuestion(UUID projectId, PptRequirementQuestionCreateRequest request) {
+        return upsertRequirementQuestion(projectId, request.questionCode(), request.label(), request.description(), request.options(), request.allowCustom());
+    }
+
+    public PptRequirementFormResponse patchRequirementQuestion(UUID projectId, String questionCode, PptRequirementQuestionPatchRequest request) {
+        RequirementFormSnapshot snapshot = projectRequirementService.getRequirementForm(projectId);
+        ObjectNode aiQuestions = snapshot.aiQuestions() instanceof ObjectNode objectNode ? objectNode.deepCopy() : objectMapper.createObjectNode();
+        ArrayNode questions = aiQuestions.withArray("questions");
+        ObjectNode target = null;
+        for (JsonNode node : questions) {
+            if (questionCode.equals(node.path("id").asText(node.path("questionCode").asText(""))) && node instanceof ObjectNode objectNode) {
+                target = objectNode;
+                break;
+            }
+        }
+        if (target == null) {
+            throw new NotFoundException("问题不存在: " + questionCode);
+        }
+        if (request.label() != null) target.put("label", request.label());
+        if (request.label() != null) target.put("prompt", request.label());
+        if (request.description() != null) target.put("description", request.description());
+        if (request.allowCustom() != null) target.put("allowCustom", request.allowCustom());
+        if (request.options() != null) {
+            ArrayNode options = objectMapper.createArrayNode();
+            request.options().forEach(option -> options.add(objectNode(
+                "id", option.optionCode(),
+                "optionCode", option.optionCode(),
+                "label", option.label(),
+                "description", option.description()
+            )));
+            target.set("options", options);
+        }
+        persistAiQuestions(projectId, aiQuestions);
+        return getRequirementForm(projectId);
+    }
+
+    public PptRequirementFormResponse deleteRequirementQuestion(UUID projectId, String questionCode) {
+        RequirementFormSnapshot snapshot = projectRequirementService.getRequirementForm(projectId);
+        ObjectNode aiQuestions = snapshot.aiQuestions() instanceof ObjectNode objectNode ? objectNode.deepCopy() : objectMapper.createObjectNode();
+        ArrayNode questions = objectMapper.createArrayNode();
+        for (JsonNode node : iterable(aiQuestions.path("questions"))) {
+            String code = node.path("id").asText(node.path("questionCode").asText(""));
+            if (!questionCode.equals(code)) {
+                questions.add(node);
+            }
+        }
+        aiQuestions.set("questions", questions);
+        persistAiQuestions(projectId, aiQuestions);
+        return getRequirementForm(projectId);
+    }
+
     public ProjectStudioSnapshot confirmRequirements(UUID projectId, PptConfirmRequest request) {
         return projectRequirementService.confirmRequirements(projectId, new RequirementConfirmRequest(request == null ? null : request.noteMd()));
     }
@@ -271,6 +356,30 @@ public class PptAgentApiService {
         return mapPage(projectId, projectStudioService.patchPageSummary(projectId, pageId, summaryMd));
     }
 
+    public PptPageResponse redesignPage(UUID projectId, UUID pageId, String instruction) {
+        return mapPage(projectId, projectStudioService.redesignPage(projectId, pageId, instruction));
+    }
+
+    public PptPageResponse retryPageSearchResult(UUID projectId, UUID pageId, String sourceId) {
+        ProjectPageSnapshot page = projectStudioService.getPage(projectId, pageId);
+        if (page.currentResearchSessionId() == null) {
+            throw new NotFoundException("当前页面还没有 research session");
+        }
+        int providerRank = parseSourceRank(sourceId);
+        jdbcTemplate.update(
+            """
+            update research_sources
+            set snippet = concat(coalesce(snippet, ''), '（已重试刷新）'),
+                raw_payload_json = cast(? as jsonb)
+            where research_session_id = ? and provider_rank = ?
+            """,
+            jsonText(objectNode("retry", true)),
+            page.currentResearchSessionId(),
+            providerRank
+        );
+        return getPage(projectId, pageId);
+    }
+
     public PptDraftVersionResponse getDraft(UUID projectId, UUID pageId) {
         ProjectPageSnapshot page = projectStudioService.getPage(projectId, pageId);
         if (page.currentDraftVersionId() == null) {
@@ -325,6 +434,92 @@ public class PptAgentApiService {
         return new PptActionJobResponse("COMPLETED", UUID.randomUUID());
     }
 
+    public PptBackgroundUploadResponse uploadBackground(UUID projectId, MultipartFile file) throws IOException {
+        String filename = file.getOriginalFilename() == null ? "background.bin" : file.getOriginalFilename();
+        String suffix = filename.contains(".") ? filename.substring(filename.lastIndexOf('.')) : ".bin";
+        Path dir = Path.of("backend", "data", "backgrounds").toAbsolutePath().normalize();
+        Files.createDirectories(dir);
+        Path target = dir.resolve(projectId + suffix);
+        Files.write(target, file.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        ProjectDetailResponse project = projectService.getProject(projectId);
+        projectService.updateProject(projectId, new com.deckgo.backend.project.dto.ProjectUpdateRequest(
+            project.title(),
+            project.requestText(),
+            project.audience(),
+            project.templateId(),
+            project.requestText(),
+            project.pageCountTarget(),
+            project.stylePreset(),
+            target.toString(),
+            project.workflowConstraints()
+        ));
+        return new PptBackgroundUploadResponse(projectId, target.toString());
+    }
+
+    public PptExportJobResponse createExport(UUID projectId, String exportFormat) throws IOException {
+        String format = (exportFormat == null || exportFormat.isBlank()) ? "pptx" : exportFormat.trim().toLowerCase();
+        ProjectStudioSnapshot studio = projectStudioService.getProject(projectId);
+        Path dir = Path.of("backend", "data", "exports").toAbsolutePath().normalize();
+        Files.createDirectories(dir);
+        UUID exportId = UUID.randomUUID();
+        Path filePath = dir.resolve(exportId + ("zip".equals(format) ? ".zip" : ".pptx"));
+
+        ArrayNode manifest = objectMapper.createArrayNode();
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(filePath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING))) {
+            for (ProjectPageSnapshot page : studio.pages()) {
+                String svg = page.currentDesignSvg() != null && !page.currentDesignSvg().isBlank()
+                    ? page.currentDesignSvg()
+                    : page.currentDraftSvg();
+                if (svg == null || svg.isBlank()) {
+                    continue;
+                }
+                String entryName = page.pageCode() + ".svg";
+                zip.putNextEntry(new ZipEntry(entryName));
+                zip.write(svg.getBytes());
+                zip.closeEntry();
+                manifest.add(objectNode("pageId", page.id().toString(), "pageCode", page.pageCode(), "file", entryName));
+            }
+            zip.putNextEntry(new ZipEntry("manifest.json"));
+            zip.write(jsonText(manifest).getBytes());
+            zip.closeEntry();
+        }
+
+        OffsetDateTime now = utcNow();
+        jdbcTemplate.update(
+            """
+            insert into export_jobs (id, project_id, export_format, status, file_path, resolved_manifest_json, created_at, updated_at)
+            values (?, ?, ?, ?, ?, cast(? as jsonb), ?, ?)
+            """,
+            exportId,
+            projectId,
+            format,
+            "COMPLETED",
+            filePath.toString(),
+            jsonText(manifest),
+            Timestamp.from(now.toInstant()),
+            Timestamp.from(now.toInstant())
+        );
+        return getExport(projectId, exportId);
+    }
+
+    public PptExportJobResponse getExport(UUID projectId, UUID exportId) {
+        return jdbcTemplate.query(
+            "select * from export_jobs where id = ? and project_id = ?",
+            (rs, rowNum) -> new PptExportJobResponse(
+                uuid(rs.getObject("id")),
+                uuid(rs.getObject("project_id")),
+                rs.getString("export_format"),
+                rs.getString("status"),
+                rs.getString("file_path"),
+                json(rs.getString("resolved_manifest_json")),
+                offset(rs.getTimestamp("created_at")),
+                offset(rs.getTimestamp("updated_at"))
+            ),
+            exportId,
+            projectId
+        ).stream().findFirst().orElseThrow(() -> new NotFoundException("导出任务不存在: " + exportId));
+    }
+
     private PptProjectSummaryResponse mapProjectSummary(ProjectResponse project) {
         ProjectStudioSnapshot studio = projectStudioService.getProject(project.id());
         return mapProjectSummary(
@@ -370,6 +565,7 @@ public class PptAgentApiService {
             project.title(),
             project.requestText(),
             project.currentStage(),
+            project.templateId(),
             previewSurface,
             previewSvg,
             project.pageCountTarget(),
@@ -401,7 +597,8 @@ public class PptAgentApiService {
                 item.path("id").asText(item.path("questionCode").asText("")),
                 item.path("prompt").asText(item.path("label").asText("")),
                 item.path("description").asText(""),
-                options
+                options,
+                item.path("allowCustom").asBoolean(true)
             ));
         }
 
@@ -900,5 +1097,67 @@ public class PptAgentApiService {
 
     private ObjectNode emptyObject() {
         return objectMapper.createObjectNode();
+    }
+
+    private PptRequirementFormResponse upsertRequirementQuestion(
+        UUID projectId,
+        String questionCode,
+        String label,
+        String description,
+        List<com.deckgo.backend.pptagent.dto.PptRequirementQuestionOptionInput> options,
+        Boolean allowCustom
+    ) {
+        RequirementFormSnapshot snapshot = projectRequirementService.getRequirementForm(projectId);
+        ObjectNode aiQuestions = snapshot.aiQuestions() instanceof ObjectNode objectNode ? objectNode.deepCopy() : objectMapper.createObjectNode();
+        ArrayNode questions = aiQuestions.withArray("questions");
+        ArrayNode next = objectMapper.createArrayNode();
+        for (JsonNode node : questions) {
+            String code = node.path("id").asText(node.path("questionCode").asText(""));
+            if (!questionCode.equals(code)) {
+                next.add(node);
+            }
+        }
+        ObjectNode question = objectMapper.createObjectNode();
+        question.put("id", questionCode);
+        question.put("questionCode", questionCode);
+        question.put("prompt", label);
+        question.put("label", label);
+        if (description != null) question.put("description", description);
+        question.put("allowCustom", allowCustom == null || allowCustom);
+        ArrayNode optionNodes = question.putArray("options");
+        if (options != null) {
+            options.forEach(option -> optionNodes.add(objectNode(
+                "id", option.optionCode(),
+                "optionCode", option.optionCode(),
+                "label", option.label(),
+                "description", option.description(),
+                "value", option.value()
+            )));
+        }
+        next.add(question);
+        aiQuestions.set("questions", next);
+        persistAiQuestions(projectId, aiQuestions);
+        return getRequirementForm(projectId);
+    }
+
+    private void persistAiQuestions(UUID projectId, JsonNode aiQuestions) {
+        jdbcTemplate.update(
+            "update requirement_forms set ai_questions_json = cast(? as jsonb), updated_at = ? where project_id = ?",
+            jsonText(aiQuestions),
+            Timestamp.from(utcNow().toInstant()),
+            projectId
+        );
+    }
+
+    private int parseSourceRank(String sourceId) {
+        if (sourceId == null || sourceId.isBlank()) {
+            return 1;
+        }
+        String normalized = sourceId.startsWith("source-") ? sourceId.substring("source-".length()) : sourceId;
+        try {
+            return Integer.parseInt(normalized);
+        } catch (NumberFormatException exception) {
+            return 1;
+        }
     }
 }

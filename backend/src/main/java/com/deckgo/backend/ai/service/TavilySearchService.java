@@ -17,7 +17,7 @@ import org.springframework.web.client.RestClient;
 @Service
 public class TavilySearchService {
 
-    private static final int FIXED_MAX_RESULTS = 20;
+    private static final int FIXED_MAX_RESULTS = 1;
     private static final Logger log = LoggerFactory.getLogger(TavilySearchService.class);
 
     private final DeckGoProperties properties;

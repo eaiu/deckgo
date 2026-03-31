@@ -5,6 +5,7 @@ export interface ProjectSummary {
   title: string;
   requestText: string;
   currentStage: ProjectStage;
+  templateId?: string | null;
   previewSurface?: "research" | "planning" | "design" | null;
   previewSvgMarkup?: string | null;
   pageCountTarget: number | null;
@@ -47,6 +48,8 @@ export interface RequirementFormData {
   questions: RequirementQuestion[];
   sources: RequirementSourceItem[];
   answers: Record<string, unknown>;
+  suggestedActions?: Array<{ code: string; label: string; reason: string }> | null;
+  pageCountOptions?: Array<{ optionCode: string; label: string; pageCount?: number; reason?: string }> | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,19 +76,30 @@ export interface ProjectRun {
 
 export interface ProjectPage {
   id: string;
+  projectId?: string;
   pageCode: string;
   pageRole?: string | null;
   partTitle?: string | null;
   sortOrder: number;
+  title?: string;
+  contentOutline?: string[];
   outlineStatus: string;
   searchStatus: string;
   summaryStatus: string;
   draftStatus: string;
   designStatus: string;
+  pageSearchQueries?: Array<{ queryText: string; queryPurpose?: string }>;
+  pageSearchResults?: Array<Record<string, unknown>>;
+  pageCorpusDigest?: Record<string, unknown> | null;
+  pageSummaryMd?: string | null;
+  pageSummaryCitations?: Array<Record<string, unknown>>;
+  currentArtifactStaleness?: Record<string, unknown> | null;
   currentBrief?: Record<string, unknown> | null;
   currentResearch?: Record<string, unknown> | null;
   currentDraftSvg?: string | null;
   currentDesignSvg?: string | null;
+  previewSurface?: string | null;
+  previewSvgMarkup?: string | null;
   citations: Array<Record<string, unknown>>;
 }
 
@@ -122,6 +136,17 @@ export interface ProjectEvent {
 interface PptActionJobResponse {
   status: string;
   agentRunId: string;
+}
+
+export interface ExportJob {
+  exportId: string;
+  projectId: string;
+  exportFormat: string;
+  status: string;
+  filePath: string;
+  resolvedManifest?: Record<string, unknown>[] | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 class ApiError extends Error {
@@ -174,6 +199,8 @@ type BackendRequirementFormSnapshot = {
   initCorpusDigest?: Record<string, unknown> | null;
   aiQuestions?: unknown;
   answers?: Record<string, unknown> | null;
+  suggestedActions?: Array<{ code: string; label: string; reason: string }> | null;
+  pageCountOptions?: Array<{ optionCode: string; label: string; pageCount?: number; reason?: string }> | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -223,6 +250,37 @@ type BackendProjectPageSnapshot = {
   updatedAt: string;
 };
 
+type BackendPptPageResponse = {
+  pageId: string;
+  projectId: string;
+  pageCode: string;
+  pageRole?: string | null;
+  partTitle?: string | null;
+  sortOrder: number;
+  title?: string;
+  contentOutline?: string[];
+  outlineStatus: string;
+  searchStatus: string;
+  summaryStatus: string;
+  draftStatus: string;
+  designStatus: string;
+  pageSearchQueries?: Array<{ queryText: string; queryPurpose?: string }>;
+  pageSearchResults?: Array<Record<string, unknown>>;
+  pageCorpusDigest?: Record<string, unknown> | null;
+  pageSummaryMd?: string | null;
+  pageSummaryCitations?: Array<Record<string, unknown>>;
+  currentArtifactStaleness?: Record<string, unknown> | null;
+  currentBriefVersionId?: string | null;
+  currentDraftVersionId?: string | null;
+  currentDesignVersionId?: string | null;
+  draftPreviewSvgMarkup?: string | null;
+  designPreviewSvgMarkup?: string | null;
+  previewSurface?: string | null;
+  previewSvgMarkup?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type BackendProjectStudioSnapshot = {
   projectId: string;
   title: string;
@@ -264,13 +322,33 @@ type BackendProjectEvent = {
   createdAt: string;
 };
 
+type BackendProjectRun = {
+  id: string;
+  stage: string;
+  attemptNo: number;
+  status: string;
+  startedAt: string;
+  finishedAt?: string | null;
+};
+
+type BackendExportJobResponse = {
+  exportId: string;
+  projectId: string;
+  exportFormat: string;
+  status: string;
+  filePath: string;
+  resolvedManifest?: Record<string, unknown>[] | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type ApiErrorPayload = {
   code?: string;
   message?: string;
   errors?: string[];
 };
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 const PROJECT_EVENT_NAMES = [
   "PROJECT_CREATED",
   "BACKGROUND_RESEARCH_STARTED",
@@ -361,6 +439,7 @@ function mapProjectSummary(payload: BackendProjectSummary | BackendProjectDetail
     title: payload.title,
     requestText: payload.requestText || payload.topic || payload.title,
     currentStage,
+    templateId: "templateId" in payload ? String((payload as BackendProjectDetail).templateId ?? "") : null,
     previewSurface: toPreviewSurface(currentStage),
     previewSvgMarkup: null,
     pageCountTarget: payload.pageCountTarget ?? null,
@@ -433,6 +512,8 @@ function mapRequirementForm(projectId: string, snapshot: BackendRequirementFormS
       .map((source, index) => mapRequirementSource(source, index))
       .filter((source): source is RequirementSourceItem => Boolean(source)),
     answers: isRecord(snapshot.answers) ? snapshot.answers : {},
+    suggestedActions: Array.isArray(snapshot.suggestedActions) ? snapshot.suggestedActions : null,
+    pageCountOptions: Array.isArray(snapshot.pageCountOptions) ? snapshot.pageCountOptions : null,
     createdAt: snapshot.createdAt,
     updatedAt: snapshot.updatedAt
   };
@@ -484,6 +565,35 @@ function mapProjectPage(page: BackendProjectPageSnapshot): ProjectPage {
   };
 }
 
+function mapPptPage(page: BackendPptPageResponse): ProjectPage {
+  return {
+    id: page.pageId,
+    projectId: page.projectId,
+    pageCode: page.pageCode,
+    pageRole: page.pageRole ?? null,
+    partTitle: page.partTitle ?? null,
+    sortOrder: page.sortOrder,
+    title: page.title ?? page.pageCode,
+    contentOutline: Array.isArray(page.contentOutline) ? page.contentOutline : [],
+    outlineStatus: page.outlineStatus,
+    searchStatus: page.searchStatus,
+    summaryStatus: page.summaryStatus,
+    draftStatus: page.draftStatus,
+    designStatus: page.designStatus,
+    pageSearchQueries: Array.isArray(page.pageSearchQueries) ? page.pageSearchQueries : [],
+    pageSearchResults: Array.isArray(page.pageSearchResults) ? page.pageSearchResults : [],
+    pageCorpusDigest: isRecord(page.pageCorpusDigest) ? page.pageCorpusDigest : null,
+    pageSummaryMd: page.pageSummaryMd ?? "",
+    pageSummaryCitations: Array.isArray(page.pageSummaryCitations) ? page.pageSummaryCitations : [],
+    currentArtifactStaleness: isRecord(page.currentArtifactStaleness) ? page.currentArtifactStaleness : null,
+    currentDraftSvg: page.draftPreviewSvgMarkup ?? null,
+    currentDesignSvg: page.designPreviewSvgMarkup ?? null,
+    previewSurface: page.previewSurface ?? null,
+    previewSvgMarkup: page.previewSvgMarkup ?? null,
+    citations: Array.isArray(page.pageSummaryCitations) ? page.pageSummaryCitations : []
+  };
+}
+
 function mapStudioProject(snapshot: BackendProjectStudioSnapshot): StudioProject {
   return {
     projectId: snapshot.projectId,
@@ -515,6 +625,19 @@ function mapProjectEvent(event: BackendProjectEvent): ProjectEvent {
     agentRunId: event.agentRunId ?? null,
     payload: isRecord(event.payload) ? event.payload : null,
     createdAt: event.createdAt
+  };
+}
+
+function mapExportJob(job: BackendExportJobResponse): ExportJob {
+  return {
+    exportId: job.exportId,
+    projectId: job.projectId,
+    exportFormat: job.exportFormat,
+    status: job.status,
+    filePath: job.filePath,
+    resolvedManifest: Array.isArray(job.resolvedManifest) ? job.resolvedManifest : null,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt
   };
 }
 
@@ -572,8 +695,47 @@ export async function fetchTemplates(): Promise<TemplateOption[]> {
 }
 
 export async function getStudioProject(projectId: string): Promise<StudioProject> {
-  const payload = await request<BackendProjectStudioSnapshot>(`/api/studio/projects/${projectId}`);
-  return mapStudioProject(payload);
+  const [project, pages, messages, projectRuns] = await Promise.all([
+    getProject(projectId),
+    listProjectPages(projectId),
+    listProjectMessages(projectId),
+    listProjectRuns(projectId)
+  ]);
+  return {
+    projectId: project.projectId,
+    title: project.title,
+    requestText: project.requestText,
+    currentStage: project.currentStage,
+    templateId: project.templateId ?? "clarity-blue",
+    pageCountTarget: project.pageCountTarget,
+    stylePreset: project.stylePreset,
+    backgroundAssetPath: project.backgroundAssetPath,
+    requirementForm: null,
+    messages,
+    pages,
+    projectRuns,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt
+  };
+}
+
+export async function listProjectMessages(projectId: string): Promise<ProjectMessage[]> {
+  return request<ProjectMessage[]>(`/api/v1/projects/${projectId}/messages`);
+}
+
+export async function listProjectRuns(projectId: string): Promise<ProjectRun[]> {
+  const payload = await request<BackendProjectRun[]>(`/api/v1/projects/${projectId}/runs`);
+  return payload.map(mapProjectRun);
+}
+
+export async function listProjectPages(projectId: string): Promise<ProjectPage[]> {
+  const payload = await request<BackendPptPageResponse[]>(`/api/v1/projects/${projectId}/pages`);
+  return payload.map(mapPptPage);
+}
+
+export async function getProjectPage(projectId: string, pageId: string): Promise<ProjectPage> {
+  const payload = await request<BackendPptPageResponse>(`/api/v1/projects/${projectId}/pages/${pageId}`);
+  return mapPptPage(payload);
 }
 
 export async function getRequirementForm(projectId: string): Promise<RequirementFormData> {
@@ -599,6 +761,12 @@ export async function patchRequirementAnswer(projectId: string, questionCode: st
   return request<RequirementFormData>(`/api/v1/projects/${projectId}/requirements/answers/${questionCode}`, {
     method: "PATCH",
     body: JSON.stringify({ value })
+  });
+}
+
+export async function retryRequirementSource(projectId: string, sourceId: string): Promise<RequirementFormData> {
+  return request<RequirementFormData>(`/api/v1/projects/${projectId}/requirements/search-results/${sourceId}:retry`, {
+    method: "POST"
   });
 }
 
@@ -656,11 +824,52 @@ export async function sendProjectMessage(
 }
 
 export async function redesignProjectPage(projectId: string, pageId: string, instruction?: string): Promise<ProjectPage> {
-  const payload = await request<BackendProjectPageSnapshot>(`/api/studio/projects/${projectId}/pages/${pageId}/redesign`, {
+  const payload = await request<BackendPptPageResponse>(`/api/v1/projects/${projectId}/pages/${pageId}/redesign`, {
     method: "POST",
     body: JSON.stringify({ instruction: instruction ?? null })
   });
-  return mapProjectPage(payload);
+  return mapPptPage(payload);
+}
+
+export async function retryPageSearchResult(projectId: string, pageId: string, sourceId: string): Promise<ProjectPage> {
+  const payload = await request<BackendPptPageResponse>(`/api/v1/projects/${projectId}/pages/${pageId}/search-results/${sourceId}:retry`, {
+    method: "POST"
+  });
+  return mapPptPage(payload);
+}
+
+export async function patchPageSummary(projectId: string, pageId: string, summaryMd: string): Promise<ProjectPage> {
+  const payload = await request<BackendPptPageResponse>(`/api/v1/projects/${projectId}/pages/${pageId}/summary`, {
+    method: "PATCH",
+    body: JSON.stringify({ summaryMd })
+  });
+  return mapPptPage(payload);
+}
+
+export async function uploadBackground(projectId: string, file: File): Promise<{ projectId: string; backgroundAssetPath: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request<{ projectId: string; backgroundAssetPath: string }>(`/api/v1/projects/${projectId}/assets/backgrounds`, {
+    method: "POST",
+    body: formData
+  });
+}
+
+export async function createExport(projectId: string, exportFormat = "pptx"): Promise<ExportJob> {
+  const payload = await request<BackendExportJobResponse>(`/api/v1/projects/${projectId}/exports`, {
+    method: "POST",
+    body: JSON.stringify({ exportFormat })
+  });
+  return mapExportJob(payload);
+}
+
+export async function getExport(projectId: string, exportId: string): Promise<ExportJob> {
+  const payload = await request<BackendExportJobResponse>(`/api/v1/projects/${projectId}/exports/${exportId}`);
+  return mapExportJob(payload);
+}
+
+export function getExportDownloadUrl(projectId: string, exportId: string): string {
+  return buildUrl(`/api/v1/projects/${projectId}/exports/${exportId}/download`);
 }
 
 export function connectProjectEventStream(
